@@ -9,10 +9,10 @@ using UnityEngine;
 namespace ModuleManager
 {
     /// <summary>
-    /// Cửa sổ phát hành, chỉ dùng ở project nguồn (Dev mode). So nội dung module với bản đã publish,
-    /// tăng version, đóng gói và đẩy lên nguồn.
+    /// Tab Publisher trong cửa sổ Module Manager, chỉ dùng ở project nguồn (Dev mode). So nội dung module với bản
+    /// đã publish, tăng version, đóng gói và đẩy lên nguồn.
     /// </summary>
-    public class ModulePublisherWindow : EditorWindow
+    internal sealed class PublisherTab
     {
         private static string ProjectRoot => ModuleManagerWindow.ProjectRoot;
         private static string OutDir => Path.Combine(ProjectRoot, "Library", "ModuleManager", "Publish");
@@ -37,19 +37,17 @@ namespace ModuleManager
         private bool _showUncovered = true;
         private List<string> _uncovered = new List<string>();
         private readonly Dictionary<string, int> _addTarget = new Dictionary<string, int>();
+        private Action _repaint;
 
-        [MenuItem("Tools/Module Manager/Publisher", priority = 1)]
-        public static void Open()
+        /// <param name="settings">Dùng chung với tab Manager nên đổi ở tab nào cũng thấy ở tab kia.</param>
+        public PublisherTab(ManagerSettings settings, Action repaint)
         {
-            var w = GetWindow<ModulePublisherWindow>("Module Publisher");
-            w.minSize = new Vector2(760, 420);
-        }
-
-        private void OnEnable()
-        {
-            _settings = ModuleManagerWindow.LoadSettings();
+            _settings = settings;
+            _repaint = repaint;
             Rescan();
         }
+
+        private void Repaint() => _repaint?.Invoke();
 
         private SourceConfig Source =>
             _settings.sources.Count == 0 ? null : _settings.sources[Mathf.Clamp(_sourceIndex, 0, _settings.sources.Count - 1)];
@@ -83,7 +81,7 @@ namespace ModuleManager
 
         // ───────────────────────── GUI ─────────────────────────
 
-        private void OnGUI()
+        public void Draw()
         {
             if (!_settings.devMode)
             {
@@ -99,7 +97,7 @@ namespace ModuleManager
 
             using (new EditorGUILayout.HorizontalScope(EditorStyles.toolbar))
             {
-                if (_settings.sources.Count == 0) GUILayout.Label("Chưa có nguồn — thêm ở Module Manager > Cấu hình", EditorStyles.miniLabel);
+                if (_settings.sources.Count == 0) GUILayout.Label("Chưa có nguồn — thêm ở tab Manager > Cấu hình", EditorStyles.miniLabel);
                 else
                 {
                     EditorGUI.BeginChangeCheck();

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.0
+
+- Gộp Manager và Publisher thành một cửa sổ có 2 tab, dùng chung cấu hình. Menu `Manager` / `Publisher` mở thẳng tab tương ứng.
+- Tab Publisher chỉ quét và tính hash khi mở lần đầu.
+
 ## 1.4.0
 
 - Chọn nhiều mục: ô chọn ở từng dòng và ở từng thư mục (chọn / bỏ chọn cả nhóm) trong Manager và Publisher.

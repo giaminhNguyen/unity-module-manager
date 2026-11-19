@@ -34,11 +34,21 @@ namespace ModuleManager
         private bool _showSettings;
         private Vector2 _scroll;
 
+        private static readonly string[] Tabs = { "Manager", "Publisher" };
+        [SerializeField] private int _tab;
+        private PublisherTab _publisher;
+
         [MenuItem("Tools/Module Manager/Manager", priority = 0)]
-        public static void Open()
+        public static void Open() => Open(0);
+
+        [MenuItem("Tools/Module Manager/Publisher", priority = 1)]
+        public static void OpenPublisher() => Open(1);
+
+        private static void Open(int tab)
         {
             var w = GetWindow<ModuleManagerWindow>("Module Manager");
             w.minSize = new Vector2(760, 420);
+            w._tab = tab;
         }
 
         internal static ManagerSettings LoadSettings() => ManagerSettings.Load(ProjectRoot);
@@ -60,11 +70,24 @@ namespace ModuleManager
 
         private void OnGUI()
         {
+            _tab = GUILayout.Toolbar(_tab, Tabs);
+            if (_tab == 1)
+            {
+                // Tạo khi mở tab lần đầu: Publisher tính hash mọi module (kể cả .unitypackage lớn) nên không làm sẵn.
+                _publisher ??= new PublisherTab(_settings, Repaint);
+                _publisher.Draw();
+                return;
+            }
+            DrawManager();
+        }
+
+        private void DrawManager()
+        {
             DrawToolbar();
             if (_showSettings) DrawSettings();
             if (_settings.devMode)
                 EditorGUILayout.HelpBox("Dev mode: project này là nguồn module nên Cài / Gỡ bị khoá để không ghi đè source. " +
-                                        "Phát hành bằng Tools/Module Manager/Publisher.", MessageType.Info);
+                                        "Phát hành ở tab Publisher.", MessageType.Info);
             foreach (var bad in _installed.Where(m => !m.IsValid))
                 EditorGUILayout.HelpBox(bad.Error, MessageType.Error);
             if (_settings.sources.Count == 0)
