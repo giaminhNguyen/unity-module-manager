@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.3.0
+
+- Plugin UPM: manifest `paths` rỗng chỉ có `packages`. Cài = thêm package, gỡ = gỡ package không module nào khác còn khai.
+- Plugin .unitypackage: trường `unityPackage` (tên file trong thư mục .unitypackage của Publisher, ngoài Assets/) và `importedPaths`. Cài = chép ra Library/ModuleManager/Import rồi `AssetDatabase.ImportPackage` không hỏi; gỡ = xoá `importedPaths`.
+- Publisher: Cấu hình dev có thêm `unityPackageFolder` (mặc định `UnityPackages/`).
+- Upload release đọc thẳng từ file, timeout tải/upload 1 giờ cho gói lớn.
+- Manifest ghi thêm `unityPackage`, `importedPaths` nên hash của module đã publish bằng bản cũ sẽ hiện "Đã đổi" một lần.
+
 ## 1.2.0
 
 - `category` chia nhiều cấp bằng `/` (vd `Toppic/UI`): Manager và Publisher hiện danh sách thành cây thư mục gập/mở được.

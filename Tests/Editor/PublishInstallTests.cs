@@ -55,7 +55,7 @@ namespace ModuleManager.Tests
                     Path.Combine(_src, "Out")).GetAwaiter().GetResult();
         }
 
-        private void Install(params string[] ids)
+        private List<string> Install(params string[] ids)
         {
             var releases = Feed.FetchAsync().Result;
             var latest = releases.GroupBy(r => r.Id).Select(g => g.OrderByDescending(r => SemVer.Parse(r.Version)).First());
@@ -64,7 +64,80 @@ namespace ModuleManager.Tests
             var plan = ModuleResolver.Plan(installed, releases, latest.Where(r => ids.Contains(r.Id)), errors);
             CollectionAssert.IsEmpty(errors);
             var zips = ModuleInstaller.DownloadAsync(Feed, plan, Path.Combine(_dst, "Dl")).Result;
-            ModuleInstaller.Apply(_dst, plan, zips, installed, _installRoot);
+            return ModuleInstaller.Apply(_dst, plan, zips, installed, _installRoot);
+        }
+
+        [Test]
+        public void UnityPackagePluginGoesToLibraryAndRemovesImportedPaths()
+        {
+            var upDir = Path.Combine(_src, "UnityPackages");
+            Directory.CreateDirectory(upDir);
+            File.WriteAllBytes(Path.Combine(upDir, "Fake Plugin.unitypackage"), new byte[] { 1, 2, 3 });
+            var m = Manifest("p.fake", "1.0.0", new string[0]);
+            m.unityPackage = "Fake Plugin.unitypackage";
+            m.importedPaths = new[] { "Assets/Plugins/Fake" };
+            WriteManifest(_src, "Assets/Fw/Modules/p.fake.module.json", m);
+            InstalledModule Local() => ModuleFiles.Scan(_src).Single(x => x.Id == "p.fake");
+
+            StringAssert.Contains("chưa cấu hình", string.Join("\n", ModuleFiles.Collect(_src, Local()).Errors));
+            StringAssert.Contains("ngoài Assets", string.Join("\n", ModuleFiles.Collect(_src, Local(), Path.Combine(_src, "Assets", "X")).Errors));
+            CollectionAssert.IsEmpty(ModuleFiles.Collect(_src, Local(), upDir).Errors);
+
+            var hash = ModulePublisher.ContentHash(_src, Local(), upDir);
+            ModulePublisher.PublishAsync(Feed, _src, Local(), null, BumpKind.Patch, "", Path.Combine(_src, "Out"), upDir)
+                .GetAwaiter().GetResult();
+
+            _installRoot = "Assets/Working";
+            var imports = Install("p.fake");
+            Assert.AreEqual(1, imports.Count);
+            CollectionAssert.AreEqual(new byte[] { 1, 2, 3 }, File.ReadAllBytes(imports[0]));
+            StringAssert.StartsWith(Path.GetFullPath(Path.Combine(_dst, "Library")), Path.GetFullPath(imports[0]));
+            Assert.IsTrue(Exists(_dst, "Assets/Working/Modules/p.fake.module.json"), "manifest là bản ghi đã cài");
+            CollectionAssert.IsEmpty(Directory.GetFiles(Path.Combine(_dst, "Assets"), "*.unitypackage", SearchOption.AllDirectories),
+                ".unitypackage không được nằm trong Assets/");
+
+            // Giả lập Unity đã import ra Assets/Plugins/Fake: gỡ module xoá luôn chỗ đó
+            FileWithMeta(_dst, "Assets/Plugins/Fake/a.cs");
+            ModuleFiles.Delete(_dst, ModuleFiles.Scan(_dst).Single(x => x.Id == "p.fake"));
+            Assert.IsFalse(Exists(_dst, "Assets/Plugins/Fake"));
+            Assert.IsFalse(Exists(_dst, "Assets/Working/Modules/p.fake.module.json"));
+
+            File.WriteAllBytes(Path.Combine(upDir, "Fake Plugin.unitypackage"), new byte[] { 9 });
+            Assert.AreNotEqual(hash, ModulePublisher.ContentHash(_src, Local(), upDir), "đổi .unitypackage thì hash phải đổi");
+        }
+
+        [Test]
+        public void PackageOnlyPluginInstallsManifestAndListsPackagesToRemove()
+        {
+            var m = Manifest("p.task", "1.0.0", new string[0]);
+            m.packages = new[] { new PackageDependency { name = "com.x.task", source = "https://example.com/task.git" } };
+            WriteManifest(_src, "Assets/Fw/Modules/p.task.module.json", m);
+            var local = ModuleFiles.Scan(_src).Single(x => x.Id == "p.task");
+            CollectionAssert.IsEmpty(ModulePublisher.Validate(_src, new[] { local }).Select(i => i.ToString()));
+            ModulePublisher.PublishAsync(Feed, _src, local, null, BumpKind.Patch, "", Path.Combine(_src, "Out")).GetAwaiter().GetResult();
+
+            CollectionAssert.IsEmpty(Install("p.task"));
+            var installed = ModuleFiles.Scan(_dst);
+            var task = installed.Single(x => x.Id == "p.task");
+            CollectionAssert.IsEmpty(task.Paths);
+            CollectionAssert.AreEqual(new[] { "com.x.task" }, ModuleInstaller.MissingPackages(_dst, new[] { task.Manifest }).Select(p => p.name));
+            CollectionAssert.AreEqual(new[] { "com.x.task" }, ModuleInstaller.PackagesToRemove(installed, task));
+
+            var other = new InstalledModule { Manifest = Manifest("o", "1.0.0", new[] { "x" }), ManifestPath = "Assets/o.module.json" };
+            other.Manifest.packages = m.packages;
+            CollectionAssert.IsEmpty(ModuleInstaller.PackagesToRemove(installed.Append(other), task), "module khác còn cần thì không gỡ");
+        }
+
+        [Test]
+        public void ParseChecksPluginFields()
+        {
+            string J(string extra) => "{\"id\":\"p\",\"version\":\"1.0.0\"" + extra + "}";
+            Assert.Throws<FormatException>(() => ModuleManifest.Parse(J("")));
+            Assert.DoesNotThrow(() => ModuleManifest.Parse(J(",\"unityPackage\":\"A b.unitypackage\"")));
+            Assert.Throws<FormatException>(() => ModuleManifest.Parse(J(",\"unityPackage\":\"dir/A.unitypackage\"")));
+            Assert.Throws<FormatException>(() => ModuleManifest.Parse(J(",\"unityPackage\":\"A.zip\"")));
+            Assert.Throws<FormatException>(() => ModuleManifest.Parse(J(",\"unityPackage\":\"A.unitypackage\",\"importedPaths\":[\"Assets/../x\"]")));
+            Assert.Throws<FormatException>(() => ModuleManifest.Parse(J(",\"unityPackage\":\"A.unitypackage\",\"importedPaths\":[\"Assets\"]")));
         }
 
         [Test]
@@ -181,6 +254,19 @@ namespace ModuleManager.Tests
                 }
                 Assert.Throws<InvalidDataException>(() => ModuleFiles.Extract(zip, _dst), bad);
                 Assert.IsFalse(Exists(_dst, "Assets/M/evil.module.json"), "gói hỏng thì không được ghi file nào");
+            }
+
+            // .unitypackage không khai trong manifest, hoặc tên lạ, đều bị từ chối
+            foreach (var bad in new[] { "UnityPackage/x.unitypackage", "UnityPackage/a/x.unitypackage", "UnityPackage/x.exe" })
+            {
+                var zip = Path.Combine(_dst, "evil.zip");
+                if (File.Exists(zip)) File.Delete(zip);
+                using (var z = new ZipArchive(File.Create(zip), ZipArchiveMode.Create))
+                {
+                    Write(z, "Assets/M/evil.module.json", manifest.ToJson());
+                    Write(z, bad, "x");
+                }
+                Assert.Throws<InvalidDataException>(() => ModuleFiles.Extract(zip, _dst), bad);
             }
         }
 

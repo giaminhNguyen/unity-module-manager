@@ -311,14 +311,18 @@ namespace ModuleManager
             if (!string.IsNullOrWhiteSpace(Source.installRoot)) message += "\n\nCài vào: " + Source.installRoot.Trim();
             if (plan.Any(s => s.Installed != null)) message += "\n\nThư mục cũ của module được cập nhật sẽ bị xoá rồi chép bản mới.";
             if (missing.Count > 0) message += "\n\nThêm package: " + string.Join(", ", missing.Select(p => p.name));
+            var unityPackages = plan.Select(s => s.Target.Manifest.unityPackage).Where(u => !string.IsNullOrEmpty(u)).ToList();
+            if (unityPackages.Count > 0) message += "\n\nImport: " + string.Join(", ", unityPackages);
             if (!EditorUtility.DisplayDialog("Module Manager", message, "Thực hiện", "Huỷ")) return;
 
             var source = SourceFactory.Create(Source, ProjectRoot);
             var zips = await ModuleInstaller.DownloadAsync(source, plan, DownloadDir,
                 (info, p) => EditorUtility.DisplayProgressBar("Module Manager", info, p));
             EditorUtility.DisplayProgressBar("Module Manager", "Chép file…", 1f);
-            ModuleInstaller.Apply(ProjectRoot, plan, zips, _installed, Source.installRoot);
+            var imports = ModuleInstaller.Apply(ProjectRoot, plan, zips, _installed, Source.installRoot);
             AssetDatabase.Refresh();
+            // File .unitypackage nằm trong Library/ nên không bao giờ vào Assets/ hay git.
+            foreach (var p in imports) AssetDatabase.ImportPackage(p, false);
             if (missing.Count > 0) AddPackages(missing);
             _status = "Xong: " + string.Join(", ", plan.Select(s => $"{s.Target.Manifest.Title} {s.Target.Version}"));
         }
@@ -331,24 +335,33 @@ namespace ModuleManager
                 EditorUtility.DisplayDialog("Không gỡ được", string.Join("\n", errors), "OK");
                 return;
             }
-            if (!EditorUtility.DisplayDialog("Gỡ module", $"Gỡ {m.Manifest.Title} {m.Version}? Sẽ xoá:\n" +
-                                                          string.Join("\n", m.Paths.Append(m.ManifestPath)), "Gỡ", "Huỷ")) return;
+            var packages = ModuleInstaller.PackagesToRemove(_installed, m);
+            var message = $"Gỡ {m.Manifest.Title} {m.Version}? Sẽ xoá:\n" +
+                          string.Join("\n", m.Paths.Concat(m.Manifest.importedPaths).Append(m.ManifestPath));
+            if (packages.Count > 0) message += "\n\nGỡ package: " + string.Join(", ", packages);
+            if (!EditorUtility.DisplayDialog("Gỡ module", message, "Gỡ", "Huỷ")) return;
             ModuleFiles.Delete(ProjectRoot, m);
             AssetDatabase.Refresh();
+            if (packages.Count > 0) RemovePackages(packages);
             Rescan();
             _status = $"Đã gỡ {m.Manifest.Title}.";
         }
 
-        private static void AddPackages(List<PackageDependency> packages)
+        private static void AddPackages(List<PackageDependency> packages) =>
+            ChangePackages(packages.Select(p => string.IsNullOrWhiteSpace(p.source) ? p.name : p.source).ToArray(), null);
+
+        private static void RemovePackages(List<string> names) => ChangePackages(null, names.ToArray());
+
+        private static void ChangePackages(string[] add, string[] remove)
         {
-            var ids = packages.Select(p => string.IsNullOrWhiteSpace(p.source) ? p.name : p.source).ToArray();
-            var request = Client.AddAndRemove(ids, null);
+            var ids = (add ?? Array.Empty<string>()).Concat(remove ?? Array.Empty<string>()).ToArray();
+            var request = Client.AddAndRemove(add, remove);
             void Poll()
             {
                 if (!request.IsCompleted) return;
                 EditorApplication.update -= Poll;
-                if (request.Status == StatusCode.Failure) Debug.LogError("[ModuleManager] Thêm package lỗi: " + request.Error?.message);
-                else Debug.Log("[ModuleManager] Đã thêm package: " + string.Join(", ", ids));
+                if (request.Status == StatusCode.Failure) Debug.LogError("[ModuleManager] Đổi package lỗi: " + request.Error?.message);
+                else Debug.Log("[ModuleManager] Đã " + (add != null ? "thêm" : "gỡ") + " package: " + string.Join(", ", ids));
             }
             EditorApplication.update += Poll;
         }

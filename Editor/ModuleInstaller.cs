@@ -27,7 +27,8 @@ namespace ModuleManager
 
         /// <param name="installRoot">Thư mục cài thay cho thư mục cấp đầu dưới Assets/ của gói. Null = giữ đường dẫn gốc.
         /// Module đã cài ở chỗ khác được xoá ở chỗ cũ rồi chép vào installRoot.</param>
-        public static void Apply(string projectRoot, IList<PlanStep> plan, IList<string> zips, IEnumerable<InstalledModule> installed,
+        /// <returns>Các file .unitypackage đã chép ra Library/ModuleManager/Import, theo thứ tự plan, để gọi import.</returns>
+        public static List<string> Apply(string projectRoot, IList<PlanStep> plan, IList<string> zips, IEnumerable<InstalledModule> installed,
             string installRoot = null)
         {
             if (plan.Count != zips.Count) throw new ArgumentException("Số gói không khớp số bước");
@@ -53,11 +54,24 @@ namespace ModuleManager
                 owners.AddRange(info.Paths.Select(p => (t.id, p)));
             }
 
+            var imports = new List<string>();
+            var importDir = Path.Combine(projectRoot, "Library", "ModuleManager", "Import");
             for (var i = 0; i < plan.Count; i++)
             {
                 if (plan[i].Installed != null) ModuleFiles.Delete(projectRoot, plan[i].Installed);
                 ModuleFiles.Extract(zips[i], projectRoot, installRoot);
+                var unityPackage = ModuleFiles.ExtractUnityPackage(zips[i], importDir);
+                if (unityPackage != null) imports.Add(unityPackage);
             }
+            return imports;
+        }
+
+        /// <summary>Package UPM của module sắp gỡ mà không module đang cài nào khác còn khai.</summary>
+        public static List<string> PackagesToRemove(IEnumerable<InstalledModule> installed, InstalledModule removing)
+        {
+            var kept = new HashSet<string>(installed.Where(m => m.IsValid && m.Id != removing.Id)
+                .SelectMany(m => m.Manifest.packages).Select(p => p.name));
+            return removing.Manifest.packages.Select(p => p.name).Where(n => !kept.Contains(n)).Distinct().ToList();
         }
 
         /// <summary>Package UPM mà các module cần nhưng Packages/manifest.json chưa có.</summary>

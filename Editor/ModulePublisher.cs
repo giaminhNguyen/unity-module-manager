@@ -20,7 +20,7 @@ namespace ModuleManager
         }
 
         /// <summary>Kiểm tra toàn bộ manifest nguồn: trùng id, phụ thuộc thiếu/vòng, path chồng nhau, thiếu file/.meta.</summary>
-        public static List<Issue> Validate(string projectRoot, IList<InstalledModule> modules)
+        public static List<Issue> Validate(string projectRoot, IList<InstalledModule> modules, string unityPackageDir = null)
         {
             var issues = new List<Issue>();
             foreach (var m in modules.Where(m => !m.IsValid))
@@ -41,7 +41,7 @@ namespace ModuleManager
                         issues.Add(new Issue { ModuleId = m.Id, Message = $"cần {d.id} >= {d.version} nhưng nguồn đang là {dep.Version}" });
                 }
 
-                foreach (var e in ModuleFiles.Collect(projectRoot, m).Errors)
+                foreach (var e in ModuleFiles.Collect(projectRoot, m, unityPackageDir).Errors)
                     issues.Add(new Issue { ModuleId = m.Id, Message = e });
             }
 
@@ -72,13 +72,14 @@ namespace ModuleManager
         }
 
         /// <summary>Hash nội dung hiện tại của module nguồn (để so với bản đã publish).</summary>
-        public static string ContentHash(string projectRoot, InstalledModule m) =>
-            ModuleFiles.ContentHash(projectRoot, m, ModuleFiles.Collect(projectRoot, m));
+        public static string ContentHash(string projectRoot, InstalledModule m, string unityPackageDir = null) =>
+            ModuleFiles.ContentHash(projectRoot, m, ModuleFiles.Collect(projectRoot, m, unityPackageDir));
 
         /// <summary>Đóng gói module thành zip; manifest trong zip mang version + contentHash.</summary>
-        public static string Pack(string projectRoot, InstalledModule m, string outDir, out ModuleManifest published)
+        public static string Pack(string projectRoot, InstalledModule m, string outDir, out ModuleManifest published,
+            string unityPackageDir = null)
         {
-            var set = ModuleFiles.Collect(projectRoot, m);
+            var set = ModuleFiles.Collect(projectRoot, m, unityPackageDir);
             if (set.Errors.Count > 0) throw new InvalidOperationException(string.Join("\n", set.Errors));
             published = m.Manifest.Clone();
             published.contentHash = ModuleFiles.ContentHash(projectRoot, m, set);
@@ -92,7 +93,7 @@ namespace ModuleManager
         /// Đẩy lỗi thì version nguồn vẫn giữ số mới; lần sau publish lại đúng số đó (không nhảy số).
         /// </summary>
         public static async Task<ModuleManifest> PublishAsync(IModuleSource source, string projectRoot, InstalledModule m,
-            string latestPublished, BumpKind kind, string changelog, string outDir)
+            string latestPublished, BumpKind kind, string changelog, string outDir, string unityPackageDir = null)
         {
             var next = NextVersion(m.Version, latestPublished, kind);
             if (next != m.Version)
@@ -102,7 +103,7 @@ namespace ModuleManager
                 File.WriteAllText(Path.Combine(projectRoot, m.ManifestPath), m.Manifest.ToJson());
             }
 
-            var zip = Pack(projectRoot, m, outDir, out var published);
+            var zip = Pack(projectRoot, m, outDir, out var published, unityPackageDir);
             await source.PublishAsync(published, changelog, zip);
             return published;
         }

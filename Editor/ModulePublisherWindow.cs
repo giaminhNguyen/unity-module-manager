@@ -16,6 +16,7 @@ namespace ModuleManager
     {
         private static string ProjectRoot => ModuleManagerWindow.ProjectRoot;
         private static string OutDir => Path.Combine(ProjectRoot, "Library", "ModuleManager", "Publish");
+        private string UnityPackageDir => _settings.UnityPackageDir(ProjectRoot);
 
         private ManagerSettings _settings;
         private int _sourceIndex;
@@ -54,11 +55,11 @@ namespace ModuleManager
         private void Rescan()
         {
             _locals = ModuleFiles.Scan(ProjectRoot);
-            _issues = ModulePublisher.Validate(ProjectRoot, _locals);
+            _issues = ModulePublisher.Validate(ProjectRoot, _locals, UnityPackageDir);
             _hashes = new Dictionary<string, string>();
             foreach (var m in _locals.Where(m => m.IsValid))
             {
-                try { _hashes[m.Id] = ModulePublisher.ContentHash(ProjectRoot, m); }
+                try { _hashes[m.Id] = ModulePublisher.ContentHash(ProjectRoot, m, UnityPackageDir); }
                 catch (Exception e) { _issues.Add(new ModulePublisher.Issue { ModuleId = m.Id, Message = e.Message }); }
             }
 
@@ -157,6 +158,9 @@ namespace ModuleManager
                     "Tiền tố id của module mới (vd myframework.)."), _settings.idPrefix);
                 _settings.auditRoot = EditorGUILayout.DelayedTextField(new GUIContent("Thư mục soát",
                     "Project path để soát file chưa thuộc module. Trống = thư mục cha của thư mục manifest."), _settings.auditRoot);
+                _settings.unityPackageFolder = EditorGUILayout.DelayedTextField(new GUIContent("Thư mục .unitypackage",
+                    "Nơi để file .unitypackage của module plugin (tương đối root project hoặc tuyệt đối). Phải nằm ngoài Assets/ " +
+                    "và ngoài repo git: file chỉ được đưa lên GitHub Release. Trống = UnityPackages."), _settings.unityPackageFolder);
                 if (EditorGUI.EndChangeCheck())
                 {
                     _settings.Save(ProjectRoot);
@@ -324,7 +328,7 @@ namespace ModuleManager
                     if (blocked != null) throw new InvalidOperationException($"{m.Manifest.Title}: {blocked}");
                     EditorUtility.DisplayProgressBar("Module Publisher", $"Publish {m.Manifest.Title}", (float)i / order.Count);
                     _published.TryGetValue(m.Id, out var pub);
-                    var published = await ModulePublisher.PublishAsync(source, ProjectRoot, m, pub?.version, Kind(m), _changelog, OutDir);
+                    var published = await ModulePublisher.PublishAsync(source, ProjectRoot, m, pub?.version, Kind(m), _changelog, OutDir, UnityPackageDir);
                     _published[m.Id] = published;
                     done.Add($"{m.Manifest.Title} {published.version}");
                 }

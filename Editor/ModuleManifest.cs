@@ -35,8 +35,14 @@ namespace ModuleManager
         [Tooltip("Module phải có trước, kèm version tối thiểu. Manager tự cài kèm.")]
         public ModuleDependency[] dependencies;
 
-        [Tooltip("Package UPM cần có trong Packages/manifest.json. Thiếu thì Manager tự thêm sau khi cài.")]
+        [Tooltip("Package UPM cần có trong Packages/manifest.json. Thiếu thì Manager tự thêm sau khi cài, gỡ module thì gỡ theo.")]
         public PackageDependency[] packages;
+
+        [Tooltip("Tên file .unitypackage (chỉ tên file) trong thư mục .unitypackage của Publisher. Cài = Unity tự import gói này.")]
+        public string unityPackage;
+
+        [Tooltip("Project path mà .unitypackage import vào (vd Assets/Plugins/Demigiant). Gỡ module sẽ xoá các path này.")]
+        public string[] importedPaths;
 
         [Tooltip("Hash nội dung lúc publish (Publisher tự ghi) để biết module đã đổi chưa. File nguồn để trống.")]
         public string contentHash;
@@ -70,7 +76,14 @@ namespace ModuleManager
             m.Normalize();
             if (string.IsNullOrWhiteSpace(m.id)) throw new FormatException("Manifest thiếu id");
             if (!SemVer.TryParse(m.version, out _)) throw new FormatException($"{m.id}: version '{m.version}' không hợp lệ");
-            if (m.paths.Length == 0) throw new FormatException($"{m.id}: paths rỗng");
+            if (m.paths.Length == 0 && m.packages.Length == 0 && m.unityPackage.Length == 0)
+                throw new FormatException($"{m.id}: cần ít nhất một trong paths, packages, unityPackage");
+            if (m.unityPackage.Length > 0 && (m.unityPackage.IndexOfAny(new[] { '/', '\\', ':' }) >= 0 ||
+                                              !m.unityPackage.EndsWith(".unitypackage", StringComparison.OrdinalIgnoreCase)))
+                throw new FormatException($"{m.id}: unityPackage '{m.unityPackage}' phải là tên file .unitypackage, không kèm thư mục");
+            foreach (var p in m.importedPaths)
+                if (!ModuleFiles.IsSafeEntry(p))
+                    throw new FormatException($"{m.id}: importedPaths '{p}' phải là project path trong Assets/ (vd Assets/Plugins/X)");
             foreach (var d in m.dependencies)
                 if (string.IsNullOrWhiteSpace(d.id) || !SemVer.TryParse(d.version, out _))
                     throw new FormatException($"{m.id}: dependency '{d.id}' thiếu id hoặc version hợp lệ");
@@ -93,6 +106,8 @@ namespace ModuleManager
             paths ??= Array.Empty<string>();
             dependencies ??= Array.Empty<ModuleDependency>();
             packages ??= Array.Empty<PackageDependency>();
+            unityPackage = unityPackage?.Trim() ?? "";
+            importedPaths = (importedPaths ?? Array.Empty<string>()).Select(p => ModuleFiles.Norm(p ?? "").Trim().TrimEnd('/')).ToArray();
             category = string.IsNullOrWhiteSpace(category) ? "Khác" : category;
             description ??= "";
             contentHash ??= "";

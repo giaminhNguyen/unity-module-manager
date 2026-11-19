@@ -15,6 +15,9 @@ namespace ModuleManager
     /// </summary>
     public static class ModuleFiles
     {
+        /// <summary>Thư mục ảo trong zip chứa file .unitypackage của module (không giải nén vào Assets/).</summary>
+        public const string UnityPackagePrefix = "UnityPackage/";
+
         // ───────────────────────── Đường dẫn ─────────────────────────
 
         public static string Norm(string p) => p.Replace('\\', '/');
@@ -126,9 +129,13 @@ namespace ModuleManager
             public readonly List<string> Shared = new List<string>();
 
             public readonly List<string> Errors = new List<string>();
+
+            /// <summary>Đường dẫn đầy đủ của file .unitypackage (null nếu module không có).</summary>
+            public string UnityPackage;
         }
 
-        public static FileSet Collect(string projectRoot, InstalledModule m)
+        /// <param name="unityPackageDir">Thư mục đầy đủ chứa file .unitypackage, phải nằm ngoài Assets/.</param>
+        public static FileSet Collect(string projectRoot, InstalledModule m, string unityPackageDir = null)
         {
             var set = new FileSet();
             var owned = new SortedSet<string>(StringComparer.Ordinal);
@@ -168,6 +175,18 @@ namespace ModuleManager
             if (!File.Exists(Full(projectRoot, m.ManifestPath + ".meta")))
                 set.Errors.Add($"{m.Id}: thiếu {m.ManifestPath}.meta — mở project bằng Unity để sinh .meta");
 
+            var up = m.Manifest.unityPackage;
+            if (!string.IsNullOrEmpty(up))
+            {
+                var assets = Norm(Path.GetFullPath(Path.Combine(projectRoot, "Assets"))).TrimEnd('/') + "/";
+                if (string.IsNullOrWhiteSpace(unityPackageDir))
+                    set.Errors.Add($"{m.Id}: chưa cấu hình thư mục .unitypackage (Publisher > Cấu hình dev)");
+                else if ((Norm(Path.GetFullPath(unityPackageDir)).TrimEnd('/') + "/").StartsWith(assets, StringComparison.OrdinalIgnoreCase))
+                    set.Errors.Add($"{m.Id}: thư mục .unitypackage phải nằm ngoài Assets/ để file không bị import và đưa lên git");
+                else if (File.Exists(Path.Combine(unityPackageDir, up))) set.UnityPackage = Path.GetFullPath(Path.Combine(unityPackageDir, up));
+                else set.Errors.Add($"{m.Id}: không tìm thấy {Path.Combine(unityPackageDir, up)}");
+            }
+
             owned.Remove(m.ManifestPath);
             owned.Remove(m.ManifestPath + ".meta");
             set.Owned.AddRange(owned);
@@ -201,6 +220,14 @@ namespace ModuleManager
                     Feed(Encoding.UTF8.GetBytes("\0" + f + "\0"));
                     Feed(File.ReadAllBytes(Full(projectRoot, f)));
                 }
+                if (set.UnityPackage != null)
+                {
+                    Feed(Encoding.UTF8.GetBytes("\0" + UnityPackagePrefix + "\0"));
+                    var buffer = new byte[1 << 20];
+                    using (var s = File.OpenRead(set.UnityPackage))
+                        for (int n; (n = s.Read(buffer, 0, buffer.Length)) > 0;)
+                            sha.TransformBlock(buffer, 0, n, null, 0);
+                }
                 sha.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
                 return string.Concat(sha.Hash.Select(b => b.ToString("x2")));
             }
@@ -227,6 +254,12 @@ namespace ModuleManager
                 var bytes = new UTF8Encoding(false).GetBytes(manifest.ToJson());
                 using (var es = zip.CreateEntry(m.ManifestPath, CompressionLevel.Optimal).Open())
                     es.Write(bytes, 0, bytes.Length);
+
+                // .unitypackage vốn đã nén nên không nén lại.
+                if (set.UnityPackage != null)
+                    using (var es = zip.CreateEntry(UnityPackagePrefix + manifest.unityPackage, CompressionLevel.NoCompression).Open())
+                    using (var input = File.OpenRead(set.UnityPackage))
+                        input.CopyTo(es);
             }
         }
 
@@ -238,6 +271,9 @@ namespace ModuleManager
             public string ManifestPath;
             public List<string> Paths;
             public readonly List<string> Entries = new List<string>();
+
+            /// <summary>Entry UnityPackage/&lt;file&gt; trong zip, null nếu không có.</summary>
+            public string UnityPackageEntry;
         }
 
         /// <summary>
@@ -252,6 +288,15 @@ namespace ModuleManager
                 foreach (var e in zip.Entries)
                 {
                     if (e.FullName.EndsWith("/", StringComparison.Ordinal)) continue;
+                    if (e.FullName.StartsWith(UnityPackagePrefix, StringComparison.Ordinal))
+                    {
+                        var file = e.FullName.Substring(UnityPackagePrefix.Length);
+                        if (info.UnityPackageEntry != null || file.IndexOfAny(new[] { '/', '\\', ':' }) >= 0 ||
+                            !file.EndsWith(".unitypackage", StringComparison.OrdinalIgnoreCase))
+                            throw new InvalidDataException($"Gói chứa .unitypackage không hợp lệ: '{e.FullName}'");
+                        info.UnityPackageEntry = e.FullName;
+                        continue;
+                    }
                     if (!IsSafeEntry(e.FullName)) throw new InvalidDataException($"Gói chứa đường dẫn không hợp lệ: '{e.FullName}'");
                     var name = MapRoot(e.FullName, installRoot);
                     info.Entries.Add(name);
@@ -264,6 +309,9 @@ namespace ModuleManager
             }
 
             if (info.Manifest == null) throw new InvalidDataException($"Gói {Path.GetFileName(zipPath)} không có *.module.json");
+            var declared = string.IsNullOrEmpty(info.Manifest.unityPackage) ? null : UnityPackagePrefix + info.Manifest.unityPackage;
+            if (declared != info.UnityPackageEntry)
+                throw new InvalidDataException($"Gói {info.Manifest.id}: file .unitypackage trong gói không khớp manifest");
             info.Paths = ResolvePaths(info.ManifestPath, info.Manifest);
             foreach (var n in info.Entries)
                 if (!IsOwned(n, info) && !IsParentMeta(n, info))
@@ -280,7 +328,7 @@ namespace ModuleManager
             {
                 foreach (var e in zip.Entries)
                 {
-                    if (e.FullName.EndsWith("/", StringComparison.Ordinal)) continue;
+                    if (e.FullName.EndsWith("/", StringComparison.Ordinal) || e.FullName == info.UnityPackageEntry) continue;
                     var name = MapRoot(e.FullName, installRoot);
                     var target = Full(projectRoot, name);
                     if (File.Exists(target))
@@ -298,10 +346,27 @@ namespace ModuleManager
             return written;
         }
 
-        /// <summary>Xoá mọi path của module (kèm .meta) và file manifest.</summary>
+        /// <summary>
+        /// Chép .unitypackage trong gói ra <paramref name="destDir"/> (nằm ngoài Assets/, vd Library/) để Unity import.
+        /// Gói không có .unitypackage thì trả null.
+        /// </summary>
+        public static string ExtractUnityPackage(string zipPath, string destDir)
+        {
+            var info = ReadPackage(zipPath);
+            if (info.UnityPackageEntry == null) return null;
+            Directory.CreateDirectory(destDir);
+            var target = Path.Combine(destDir, info.UnityPackageEntry.Substring(UnityPackagePrefix.Length));
+            using (var zip = new ZipArchive(File.OpenRead(zipPath), ZipArchiveMode.Read))
+            using (var input = zip.GetEntry(info.UnityPackageEntry).Open())
+            using (var output = File.Create(target))
+                input.CopyTo(output);
+            return target;
+        }
+
+        /// <summary>Xoá mọi path của module (kèm .meta), các path .unitypackage đã import vào, và file manifest.</summary>
         public static void Delete(string projectRoot, InstalledModule m)
         {
-            foreach (var p in m.Paths.Append(m.ManifestPath))
+            foreach (var p in m.Paths.Concat(m.Manifest?.importedPaths ?? Array.Empty<string>()).Append(m.ManifestPath))
             {
                 DeletePath(Full(projectRoot, p));
                 DeletePath(Full(projectRoot, p + ".meta"));
@@ -338,7 +403,7 @@ namespace ModuleManager
             throw new InvalidDataException($"'{entry}' nằm thẳng trong Assets/, không đổi được thư mục cài");
         }
 
-        private static bool IsSafeEntry(string n) =>
+        internal static bool IsSafeEntry(string n) =>
             n.StartsWith("Assets/", StringComparison.Ordinal) && n.IndexOf('\\') < 0 && n.IndexOf(':') < 0 &&
             n.Split('/').All(s => s.Length > 0 && s != "." && s != "..");
 

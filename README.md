@@ -51,8 +51,37 @@ Ghim version bằng tag: `https://github.com/giaminhNguyen/unity-module-manager.
 - `paths` tính **tương đối thư mục chứa manifest** và phải nằm trong `Assets/`. Module cài ra đúng chỗ nó nằm ở project nguồn
   (hoặc dưới `installRoot` của nguồn, xem phần Nguồn).
 - `dependencies.version` là version **tối thiểu**. Manager tự cài kèm hoặc nâng module phụ thuộc.
-- `packages`: package UPM cần có. Thiếu thì Manager thêm vào `Packages/manifest.json` sau khi cài.
+- `packages`: package UPM cần có. Thiếu thì Manager thêm vào `Packages/manifest.json` sau khi cài; gỡ module thì gỡ
+  các package mà không module đang cài nào khác còn khai.
+- `unityPackage`, `importedPaths`: xem phần Plugin bên dưới.
 - `version`, `contentHash` do Publisher ghi. Không sửa tay `contentHash`.
+
+### Plugin (module không chứa file của project)
+
+Manager nhận ra loại từ dữ liệu manifest, không cần khai loại:
+
+| Loại | Manifest | Cài | Gỡ |
+|---|---|---|---|
+| Module file | `paths` có nội dung | Chép file | Xoá file |
+| Plugin UPM | `paths` rỗng, có `packages` | Thêm package (git URL hoặc tên package) | Gỡ package |
+| Plugin .unitypackage | Có `unityPackage` | Unity tự import gói, không hỏi | Xoá các path trong `importedPaths` |
+
+```json
+{ "id": "plugin.unitask", "displayName": "UniTask", "category": "Plugins/UPM", "version": "1.0.0", "paths": [],
+  "packages": [{ "name": "com.cysharp.unitask", "source": "https://github.com/Cysharp/UniTask.git?path=src/UniTask/Assets/Plugins/UniTask" }] }
+
+{ "id": "plugin.dotween-pro", "displayName": "DOTween Pro", "category": "Plugins/Asset Store", "version": "1.0.381", "paths": [],
+  "unityPackage": "DOTween Pro v.1.0.381.unitypackage", "importedPaths": ["Assets/Plugins/Demigiant"] }
+```
+
+- `unityPackage` chỉ là tên file. File nằm trong **thư mục .unitypackage** của Publisher (Cấu hình dev, mặc định
+  `UnityPackages/` ở root project), thư mục này phải nằm ngoài `Assets/` và không nên nằm trong repo git.
+  File chỉ được đưa lên GitHub Release (trong zip của module, mục `UnityPackage/`), không bao giờ vào repo.
+- Ở game project, Manager chép file ra `Library/ModuleManager/Import` rồi gọi `AssetDatabase.ImportPackage`.
+  `Library/` không vào git nên file .unitypackage cũng không. Import chạy nền sau khi bấm Cài.
+- `installRoot` không áp dụng cho nội dung .unitypackage: Unity import theo đường dẫn có sẵn trong gói.
+- `importedPaths` để trống thì Gỡ chỉ xoá manifest, file của plugin phải xoá tay.
+- Manifest của plugin vẫn được chép vào project (dưới `installRoot`) làm bản ghi đã cài và version.
 
 ### Nguồn
 
@@ -153,6 +182,8 @@ Repo public thì Manager không cần token.
 | `ProjectSettings/ModuleManagerSettings.json` | Danh sách nguồn, Dev mode, cấu hình dev. Commit cùng project. Chưa có thì cấu hình trống. |
 | `Library/ModuleManager/Downloads` | Zip đã tải |
 | `Library/ModuleManager/Publish` | Zip vừa đóng gói |
+| `Library/ModuleManager/Import` | File .unitypackage chép ra để Unity import |
+| `<unityPackageFolder>` (mặc định `UnityPackages/`) | File .unitypackage để publish (project nguồn, ngoài Assets/) |
 | `Packages/manifest.json` | Thêm package UPM module cần |
 | `<manifestFolder>/*.module.json` | Manifest tạo mới / thêm path (chỉ khi dùng tính năng soạn module) |
 

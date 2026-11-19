@@ -189,9 +189,10 @@ namespace ModuleManager
             if (brace >= 0) uploadUrl = uploadUrl.Substring(0, brace);
             var assetName = $"{manifest.id}-{manifest.version}.zip";
 
-            using (var r = Request("POST", uploadUrl + "?name=" + UnityWebRequest.EscapeURL(assetName), "application/vnd.github+json", 600))
+            // Gói có .unitypackage có thể vài trăm MB: đọc thẳng từ file, cho thời gian dài.
+            using (var r = Request("POST", uploadUrl + "?name=" + UnityWebRequest.EscapeURL(assetName), "application/vnd.github+json", 3600))
             {
-                r.uploadHandler = new UploadHandlerRaw(File.ReadAllBytes(zipPath)) { contentType = "application/zip" };
+                r.uploadHandler = new UploadHandlerFile(zipPath) { contentType = "application/zip" };
                 await Send(r);
                 if (Ok(r)) return;
                 var error = Fail(r, "Upload " + assetName);
@@ -233,7 +234,7 @@ namespace ModuleManager
 
         private async Task<byte[]> GetBytes(string url, bool auth, string what)
         {
-            using (var r = Request("GET", url, "application/octet-stream", 600, auth))
+            using (var r = Request("GET", url, "application/octet-stream", 3600, auth))
             {
                 await Send(r);
                 if (!Ok(r)) throw new Exception(Fail(r, "Tải " + what));

@@ -76,6 +76,13 @@ namespace ModuleManager
         [Tooltip("Project path để soát file chưa thuộc module nào. Để trống = thư mục cha của manifestFolder.")]
         public string auditRoot;
 
+        [Tooltip("Thư mục chứa file .unitypackage để publish (tương đối root project hoặc tuyệt đối). Phải nằm ngoài Assets/. Trống = UnityPackages.")]
+        public string unityPackageFolder;
+
+        /// <summary>Đường dẫn đầy đủ của thư mục .unitypackage.</summary>
+        public string UnityPackageDir(string projectRoot) =>
+            Path.GetFullPath(Path.Combine(projectRoot, string.IsNullOrWhiteSpace(unityPackageFolder) ? "UnityPackages" : unityPackageFolder.Trim()));
+
         /// <summary>Đọc cấu hình; chưa có file hoặc file hỏng thì cấu hình trống.</summary>
         public static ManagerSettings Load(string projectRoot)
         {
