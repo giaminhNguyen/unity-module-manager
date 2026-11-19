@@ -186,7 +186,8 @@ Repo public thì Manager không cần token.
 | Đường dẫn | Vai trò |
 |---|---|
 | `ProjectSettings/ModuleManagerSettings.json` | Danh sách nguồn, Dev mode, cấu hình dev. Commit cùng project. Chưa có thì cấu hình trống. |
-| `Library/ModuleManager/Downloads` | Zip đã tải |
+| `Library/ModuleManager/Cache` | Danh sách release lần Fetch gần nhất của từng nguồn (giữ qua domain reload) |
+| `Library/ModuleManager/Downloads` | Zip đã tải (dùng lại nếu cùng tên và kích thước) |
 | `Library/ModuleManager/Publish` | Zip vừa đóng gói |
 | `Library/ModuleManager/Import` | File .unitypackage chép ra để Unity import |
 | `<unityPackageFolder>` (mặc định `UnityPackages/`) | File .unitypackage để publish (project nguồn, ngoài Assets/) |

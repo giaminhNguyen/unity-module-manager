@@ -161,6 +161,38 @@ namespace ModuleManager.Tests
         }
 
         [Test]
+        public void ReleaseCacheRoundTripsAndIgnoresCorruptFile()
+        {
+            PublishAll();
+            var releases = Feed.FetchAsync().Result;
+            var source = new SourceConfig { name = "x", type = SourceConfig.Folder, location = "../Feed dir" };
+            var at = new DateTime(2026, 1, 2, 3, 4, 5, DateTimeKind.Utc);
+            ReleaseCache.Save(_dst, source, releases, at);
+
+            var back = ReleaseCache.Load(_dst, source, out var when);
+            Assert.AreEqual(at, when.ToUniversalTime());
+            CollectionAssert.AreEquivalent(releases.Select(r => $"{r.Id} {r.Version} {r.AssetName} {r.Size} {r.Manifest.contentHash}"),
+                back.Select(r => $"{r.Id} {r.Version} {r.AssetName} {r.Size} {r.Manifest.contentHash}"));
+
+            Assert.IsNull(ReleaseCache.Load(_dst, new SourceConfig { type = SourceConfig.GitHub, location = "a/b" }, out _), "nguồn khác chưa có cache");
+            File.WriteAllText(ReleaseCache.PathOf(_dst, source), "{hỏng");
+            Assert.IsNull(ReleaseCache.Load(_dst, source, out _), "cache hỏng coi như chưa có");
+        }
+
+        [Test]
+        public void DownloadReusesFileWithSameSize()
+        {
+            PublishAll();
+            var releases = Feed.FetchAsync().Result;
+            var plan = ModuleResolver.Plan(new List<InstalledModule>(), releases, releases.Where(r => r.Id == "t.a"), new List<string>());
+            var dl = Path.Combine(_dst, "Dl");
+            Directory.CreateDirectory(dl);
+            var cached = Path.Combine(dl, plan[0].Target.AssetName);
+            File.Copy(plan[0].Target.AssetUrl, cached);
+            Assert.AreEqual(cached, ModuleInstaller.DownloadAsync(Feed, plan, dl).Result[0], "đã có file cùng kích thước thì không tải lại");
+        }
+
+        [Test]
         public void ParseChecksPluginFields()
         {
             string J(string extra) => "{\"id\":\"p\",\"version\":\"1.0.0\"" + extra + "}";

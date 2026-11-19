@@ -51,6 +51,25 @@ namespace ModuleManager
         {
             _settings = LoadSettings();
             Rescan();
+            LoadCache();
+        }
+
+        /// <summary>Lấy danh sách lần Fetch trước của nguồn đang chọn (giữ được qua domain reload sau khi cài).</summary>
+        private void LoadCache()
+        {
+            if (Source == null) return;
+            var cached = ReleaseCache.Load(ProjectRoot, Source, out var at);
+            if (cached == null) return;
+            SetReleases(cached);
+            _status = $"{Source.name}: {_byId.Count} module · dữ liệu lúc {at.ToLocalTime():HH:mm dd/MM} (cache) — Fetch để cập nhật";
+        }
+
+        private void SetReleases(List<ModuleRelease> releases)
+        {
+            _releases = releases;
+            _byId = _releases.GroupBy(r => r.Id)
+                .ToDictionary(g => g.Key, g => g.OrderByDescending(r => SemVer.Parse(r.Version)).ToList());
+            _picked.Clear();
         }
 
         private void Rescan() => _installed = ModuleFiles.Scan(ProjectRoot);
@@ -64,7 +83,7 @@ namespace ModuleManager
 
         private void OnGUI()
         {
-            _tab = GUILayout.Toolbar(_tab, Tabs);
+            _tab = ModuleStyles.Tabs(_tab, Tabs);
             if (_tab == 1)
             {
                 // Tạo khi mở tab lần đầu: Publisher tính hash mọi module (kể cả .unitypackage lớn) nên không làm sẵn.
@@ -86,16 +105,24 @@ namespace ModuleManager
                 EditorGUILayout.HelpBox(bad.Error, MessageType.Error);
             if (_settings.sources.Count == 0)
                 EditorGUILayout.HelpBox("Chưa có nguồn module. Mở Cấu hình → Thêm nguồn, nhập owner/repo (GitHub) hoặc đường dẫn thư mục, rồi bấm Fetch.", MessageType.Info);
-            EditorGUILayout.LabelField(_status, EditorStyles.miniLabel);
+            DrawSummary();
 
             _scroll = EditorGUILayout.BeginScrollView(_scroll);
             var ids = _byId.Keys.Union(_installed.Where(m => m.IsValid).Select(m => m.Id)).Distinct();
             var rows = ids.Select(id => (id, manifest: Latest(id)?.Manifest ?? Installed(id).Manifest))
                 .Where(r => string.IsNullOrEmpty(_search) ||
                             r.manifest.Title.IndexOf(_search, StringComparison.OrdinalIgnoreCase) >= 0 ||
-                            r.id.IndexOf(_search, StringComparison.OrdinalIgnoreCase) >= 0);
+                            r.id.IndexOf(_search, StringComparison.OrdinalIgnoreCase) >= 0).ToList();
 
-            DrawCategoryTree(rows.ToList(), r => r.manifest, r => DrawRow(r.id), _collapsed, _selected);
+            if (rows.Count == 0)
+                EditorGUILayout.LabelField(_byId.Count == 0 ? "Chưa có danh sách module. Chọn nguồn rồi bấm Fetch." : "Không có module khớp ô tìm kiếm.",
+                    ModuleStyles.Hint);
+            else
+            {
+                DrawColumns(("Đang cài", ModuleStyles.VersionWidth), ("Bản", ModuleStyles.PickWidth),
+                    ("Trạng thái", ModuleStyles.StatusWidth), ("", ModuleStyles.ActionWidth + ModuleStyles.IconWidth + 4));
+                DrawCategoryTree(rows, r => r.manifest, r => DrawRow(r.id), _collapsed, _selected);
+            }
             EditorGUILayout.EndScrollView();
 
             DrawFooter();
@@ -107,42 +134,64 @@ namespace ModuleManager
         /// có ô chọn (theo id module); ô thư mục chọn / bỏ chọn cả nhóm.
         /// </summary>
         internal static void DrawCategoryTree<T>(IList<T> items, Func<T, ModuleManifest> manifest, Action<T> drawRow,
-            HashSet<string> collapsed, HashSet<string> selected = null) =>
+            HashSet<string> collapsed, HashSet<string> selected = null)
+        {
+            var row = 0;
             DrawCategoryLevel(items.Select(i => (path: manifest(i).CategoryPath, title: manifest(i).Title, id: manifest(i).id, item: i)).ToList(),
-                0, "", drawRow, collapsed, selected);
+                0, "", drawRow, collapsed, selected, ref row);
+        }
 
         private static void DrawCategoryLevel<T>(List<(string[] path, string title, string id, T item)> items, int depth, string prefix,
-            Action<T> drawRow, HashSet<string> collapsed, HashSet<string> selected)
+            Action<T> drawRow, HashSet<string> collapsed, HashSet<string> selected, ref int row)
         {
             foreach (var r in items.Where(x => x.path.Length == depth).OrderBy(x => x.title, StringComparer.OrdinalIgnoreCase))
-                using (new EditorGUILayout.HorizontalScope())
-                {
-                    GUILayout.Space(depth * 14);
-                    if (selected != null) Check(selected, new[] { r.id });
-                    using (new EditorGUILayout.VerticalScope()) drawRow(r.item);
-                }
+            {
+                var rect = EditorGUILayout.BeginHorizontal(GUILayout.MinHeight(ModuleStyles.RowHeight));
+                ModuleStyles.RowBackground(rect, row++, selected != null && selected.Contains(r.id));
+                GUILayout.Space(4 + depth * 14);
+                if (selected != null)
+                    using (new EditorGUILayout.VerticalScope(GUILayout.Width(ModuleStyles.CheckWidth)))
+                    {
+                        GUILayout.FlexibleSpace();
+                        Check(selected, new[] { r.id });
+                        GUILayout.FlexibleSpace();
+                    }
+                using (new EditorGUILayout.VerticalScope()) drawRow(r.item);
+                EditorGUILayout.EndHorizontal();
+            }
 
             foreach (var g in items.Where(x => x.path.Length > depth).GroupBy(x => x.path[depth]).OrderBy(g => g.Key, StringComparer.Ordinal))
             {
                 var key = prefix + g.Key;
                 var open = !collapsed.Contains(key);
-                bool now;
-                using (new EditorGUILayout.HorizontalScope())
-                {
-                    GUILayout.Space(depth * 14);
-                    if (selected != null) Check(selected, g.Select(x => x.id).ToList());
-                    now = EditorGUILayout.Foldout(open, $"{g.Key} ({g.Count()})", true,
-                        depth == 0 ? EditorStyles.foldoutHeader : EditorStyles.foldout);
-                }
+                if (depth == 0) GUILayout.Space(6);
+                var rect = EditorGUILayout.BeginHorizontal(GUILayout.Height(depth == 0 ? 24 : 21));
+                ModuleStyles.GroupBackground(rect, depth);
+                GUILayout.Space(4 + depth * 14);
+                if (selected != null) Check(selected, g.Select(x => x.id).ToList());
+                var now = EditorGUILayout.Foldout(open, $"{g.Key}  ({g.Count()})", true,
+                    depth == 0 ? ModuleStyles.Group : ModuleStyles.SubGroup);
+                EditorGUILayout.EndHorizontal();
                 if (now != open)
                 {
                     if (now) collapsed.Remove(key);
                     else collapsed.Add(key);
                 }
                 if (!now) continue;
-                DrawCategoryLevel(g.ToList(), depth + 1, key + "/", drawRow, collapsed, selected);
-                if (depth == 0) EditorGUILayout.Space(4);
+                DrawCategoryLevel(g.ToList(), depth + 1, key + "/", drawRow, collapsed, selected, ref row);
             }
+        }
+
+        /// <summary>Hàng tiêu đề cột: cột "Module" giãn, các cột sau cố định (khớp độ rộng với từng dòng).</summary>
+        internal static void DrawColumns(params (string title, float width)[] columns)
+        {
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                GUILayout.Space(4 + ModuleStyles.CheckWidth + ModuleStyles.ArrowWidth + 4);
+                GUILayout.Label("Module", ModuleStyles.Column, GUILayout.MinWidth(0), GUILayout.ExpandWidth(true));
+                foreach (var (title, width) in columns) GUILayout.Label(title, ModuleStyles.Column, GUILayout.Width(width));
+            }
+            ModuleStyles.Separator();
         }
 
         /// <summary>Ô chọn cho một nhóm id: tick = chọn hết, bỏ tick = bỏ hết, chọn một phần thì hiện dấu "–".</summary>
@@ -155,6 +204,25 @@ namespace ModuleManager
             if (now == all) return;
             if (now) selected.UnionWith(ids);
             else selected.ExceptWith(ids);
+        }
+
+        /// <summary>Tên + nhãn loại (dòng 1) và id · mô tả (dòng 2), dùng cho cột Module ở cả 2 tab.</summary>
+        internal static void DrawNameCell(ModuleManifest m)
+        {
+            using (new EditorGUILayout.VerticalScope(GUILayout.MinWidth(0), GUILayout.ExpandWidth(true)))
+            {
+                GUILayout.FlexibleSpace();
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    GUILayout.Label(new GUIContent(m.Title, m.id), ModuleStyles.Title, GUILayout.ExpandWidth(false));
+                    var tag = ModuleStyles.KindTag(m);
+                    if (tag != null) GUILayout.Label(tag, ModuleStyles.Tag, GUILayout.ExpandWidth(false));
+                    GUILayout.FlexibleSpace();
+                }
+                var sub = string.IsNullOrWhiteSpace(m.description) ? m.id : m.id + "  ·  " + m.description;
+                GUILayout.Label(new GUIContent(sub, m.description), ModuleStyles.Sub, GUILayout.MinWidth(0), GUILayout.ExpandWidth(true));
+                GUILayout.FlexibleSpace();
+            }
         }
 
         /// <summary>Gộp danh sách dài cho hộp thoại: quá <paramref name="max"/> dòng thì rút gọn.</summary>
@@ -172,18 +240,30 @@ namespace ModuleManager
             {
                 if (_settings.sources.Count == 0) GUILayout.Label("Chưa có nguồn — mở Cấu hình để thêm", EditorStyles.miniLabel);
                 else
+                {
+                    GUILayout.Label("Nguồn", EditorStyles.miniLabel, GUILayout.ExpandWidth(false));
+                    EditorGUI.BeginChangeCheck();
                     _sourceIndex = EditorGUILayout.Popup(_sourceIndex, _settings.sources.Select(s => s.name).ToArray(),
-                        EditorStyles.toolbarPopup, GUILayout.Width(170));
+                        EditorStyles.toolbarPopup, GUILayout.Width(150));
+                    if (EditorGUI.EndChangeCheck())
+                    {
+                        SetReleases(new List<ModuleRelease>());
+                        _status = "";
+                        LoadCache();
+                    }
+                }
 
                 using (new EditorGUI.DisabledScope(_busy || Source == null))
-                    if (GUILayout.Button(new GUIContent("Fetch", "Tải danh sách module và version từ nguồn"), EditorStyles.toolbarButton, GUILayout.Width(60)))
+                    if (GUILayout.Button(ModuleStyles.Icon("Refresh", " Fetch", "Tải danh sách module và version từ nguồn (kết quả được lưu cache)"),
+                            EditorStyles.toolbarButton, GUILayout.Width(70)))
                         Run(FetchAsync);
                 if (GUILayout.Button(new GUIContent("Quét lại", "Đọc lại các *.module.json đang có trong project"), EditorStyles.toolbarButton, GUILayout.Width(60)))
                     Rescan();
 
                 GUILayout.FlexibleSpace();
                 _search = GUILayout.TextField(_search, EditorStyles.toolbarSearchField, GUILayout.Width(200));
-                _showSettings = GUILayout.Toggle(_showSettings, "Cấu hình", EditorStyles.toolbarButton, GUILayout.Width(70));
+                _showSettings = GUILayout.Toggle(_showSettings, ModuleStyles.Icon("_Popup", " Cấu hình", "Nguồn, thư mục cài, Dev mode"),
+                    EditorStyles.toolbarButton, GUILayout.Width(86));
             }
 
             if (Source?.type == SourceConfig.GitHub)
@@ -235,35 +315,61 @@ namespace ModuleManager
             var manifest = versions?[0].Manifest ?? inst.Manifest;
             ModuleRelease pick = null;
 
-            using (new EditorGUILayout.HorizontalScope())
+            using (new EditorGUILayout.HorizontalScope(GUILayout.MinHeight(ModuleStyles.RowHeight)))
             {
                 var expanded = _expanded == id;
-                if (GUILayout.Button(expanded ? "▼" : "▶", EditorStyles.label, GUILayout.Width(16))) _expanded = expanded ? null : id;
-                GUILayout.Label(new GUIContent(manifest.Title, id + "\n" + manifest.description), GUILayout.Width(230));
+                if (GUILayout.Button(new GUIContent(expanded ? "▾" : "▸", "Chi tiết"), ModuleStyles.Arrow,
+                        GUILayout.Width(ModuleStyles.ArrowWidth), GUILayout.ExpandHeight(true)))
+                    _expanded = expanded ? null : id;
+                DrawNameCell(manifest);
 
-                var style = new GUIStyle(EditorStyles.label);
-                style.normal.textColor = inst != null ? new Color(0.35f, 0.8f, 0.35f) : Color.gray;
-                GUILayout.Label(inst?.Version ?? "Chưa cài", style, GUILayout.Width(90));
+                ModuleStyles.CellLabel(new GUIContent(inst?.Version ?? "—"), ModuleStyles.VersionWidth);
 
-                if (versions != null)
+                using (new EditorGUILayout.VerticalScope(GUILayout.Width(ModuleStyles.PickWidth)))
                 {
-                    _picked.TryGetValue(id, out var idx);
-                    idx = Mathf.Clamp(EditorGUILayout.Popup(idx, versions.Select(v => v.Version).ToArray(), GUILayout.Width(90)), 0, versions.Count - 1);
-                    _picked[id] = idx;
-                    pick = versions[idx];
+                    GUILayout.FlexibleSpace();
+                    if (versions != null)
+                    {
+                        _picked.TryGetValue(id, out var idx);
+                        idx = Mathf.Clamp(EditorGUILayout.Popup(idx, versions.Select(v => v.Version).ToArray(), GUILayout.Width(ModuleStyles.PickWidth - 6)),
+                            0, versions.Count - 1);
+                        _picked[id] = idx;
+                        pick = versions[idx];
+                    }
+                    else GUILayout.Label(new GUIContent("—", "Nguồn không có module này (chưa Fetch hoặc cài từ nguồn khác)"), ModuleStyles.Cell);
+                    GUILayout.FlexibleSpace();
                 }
-                else GUILayout.Label(new GUIContent("—", "Nguồn không có module này (chưa Fetch hoặc cài từ nguồn khác)"), GUILayout.Width(90));
+
+                using (new EditorGUILayout.VerticalScope(GUILayout.Width(ModuleStyles.StatusWidth)))
+                {
+                    GUILayout.FlexibleSpace();
+                    var latest = versions?[0];
+                    if (inst == null) ModuleStyles.Status("Chưa cài", ModuleStyles.Muted);
+                    else if (latest == null) ModuleStyles.Status("Ngoài nguồn", ModuleStyles.Muted, "Nguồn đang chọn không có module này");
+                    else if (SemVer.Compare(latest.Version, inst.Version) > 0) ModuleStyles.Status("Có bản " + latest.Version, ModuleStyles.Amber);
+                    else ModuleStyles.Status("Đã cài", ModuleStyles.Green);
+                    GUILayout.FlexibleSpace();
+                }
 
                 var locked = _busy || _settings.devMode;
-                using (new EditorGUI.DisabledScope(locked || pick == null))
-                    if (GUILayout.Button(ActionLabel(inst, pick), GUILayout.Width(80)))
+                using (new EditorGUILayout.VerticalScope(GUILayout.Width(ModuleStyles.ActionWidth + ModuleStyles.IconWidth + 4)))
+                {
+                    GUILayout.FlexibleSpace();
+                    using (new EditorGUILayout.HorizontalScope())
                     {
-                        var target = pick;
-                        Run(() => InstallAsync(new[] { target }));
+                        using (new EditorGUI.DisabledScope(locked || pick == null))
+                            if (GUILayout.Button(ActionLabel(inst, pick), GUILayout.Width(ModuleStyles.ActionWidth), GUILayout.Height(22)))
+                            {
+                                var target = pick;
+                                Run(() => InstallAsync(new[] { target }));
+                            }
+                        using (new EditorGUI.DisabledScope(locked || inst == null))
+                            if (GUILayout.Button(ModuleStyles.Icon("TreeEditor.Trash", "", "Gỡ module"),
+                                    GUILayout.Width(ModuleStyles.IconWidth), GUILayout.Height(22)))
+                                EditorApplication.delayCall += () => Remove(new[] { inst });
                     }
-                using (new EditorGUI.DisabledScope(locked || inst == null))
-                    if (GUILayout.Button("Gỡ", GUILayout.Width(40)))
-                        EditorApplication.delayCall += () => Remove(new[] { inst });
+                    GUILayout.FlexibleSpace();
+                }
             }
 
             if (_expanded == id) DrawDetails(manifest, pick, inst);
@@ -280,8 +386,9 @@ namespace ModuleManager
                     EditorGUILayout.LabelField("Cần", string.Join(", ", m.dependencies.Select(d => $"{d.id} >= {d.version}")), EditorStyles.wordWrappedLabel);
                 if (m.packages.Length > 0)
                     EditorGUILayout.LabelField("Package UPM", string.Join(", ", m.packages.Select(p => p.name)), EditorStyles.wordWrappedLabel);
-                if (inst != null)
-                    EditorGUILayout.LabelField("Đang ở", string.Join("\n", inst.Paths), EditorStyles.wordWrappedLabel);
+                var where = inst == null ? new List<string>() : inst.Paths.Concat(inst.Manifest.importedPaths).ToList();
+                if (where.Count > 0)
+                    EditorGUILayout.LabelField("Đang ở", string.Join("\n", where), EditorStyles.wordWrappedLabel);
                 if (pick != null)
                 {
                     EditorGUILayout.LabelField($"Bản {pick.Version}", $"{pick.PublishedAt}  ·  {pick.Size / 1024f:0} KB");
@@ -297,28 +404,45 @@ namespace ModuleManager
             var toInstall = _selected.Select(Picked).Where(r => r != null).ToList();
             var toRemove = _selected.Select(Installed).Where(m => m != null).ToList();
             var locked = _busy || _settings.devMode;
-            using (new EditorGUILayout.HorizontalScope(EditorStyles.toolbar))
+            ModuleStyles.BeginBar();
+            GUILayout.Label($"Đã chọn {_selected.Count}", EditorStyles.boldLabel, GUILayout.Width(90), GUILayout.Height(22));
+            using (new EditorGUI.DisabledScope(locked || toInstall.Count == 0))
+                if (GUILayout.Button($"Cài / Cập nhật ({toInstall.Count})", GUILayout.Height(22), GUILayout.Width(150)))
+                    Run(async () =>
+                    {
+                        if (await InstallAsync(toInstall)) _selected.Clear();
+                    });
+            using (new EditorGUI.DisabledScope(locked || toRemove.Count == 0))
+                if (GUILayout.Button($"Gỡ ({toRemove.Count})", GUILayout.Height(22), GUILayout.Width(80)))
+                    EditorApplication.delayCall += () =>
+                    {
+                        if (Remove(toRemove)) _selected.Clear();
+                    };
+            using (new EditorGUI.DisabledScope(_selected.Count == 0))
+                if (GUILayout.Button("Bỏ chọn", GUILayout.Height(22), GUILayout.Width(70)))
+                    _selected.Clear();
+            GUILayout.FlexibleSpace();
+            using (new EditorGUI.DisabledScope(locked || updates.Count == 0))
+                if (GUILayout.Button($"Cập nhật tất cả ({updates.Count})", GUILayout.Height(22), GUILayout.Width(150)))
+                    Run(() => InstallAsync(updates));
+            ModuleStyles.EndBar();
+        }
+
+        /// <summary>Dải tóm tắt: đếm theo trạng thái + thời điểm dữ liệu / thông báo gần nhất.</summary>
+        private void DrawSummary()
+        {
+            var installed = _installed.Count(m => m.IsValid);
+            var updates = Updatable().Count;
+            var notInstalled = _byId.Keys.Count(id => Installed(id) == null);
+            using (new EditorGUILayout.HorizontalScope(ModuleStyles.Bar))
             {
-                GUILayout.Label($"Đã cài {_installed.Count(m => m.IsValid)} module · Đã chọn {_selected.Count}", EditorStyles.miniLabel);
-                GUILayout.FlexibleSpace();
-                using (new EditorGUI.DisabledScope(locked || toInstall.Count == 0))
-                    if (GUILayout.Button($"Cài / Cập nhật đã chọn ({toInstall.Count})", EditorStyles.toolbarButton, GUILayout.Width(190)))
-                        Run(async () =>
-                        {
-                            if (await InstallAsync(toInstall)) _selected.Clear();
-                        });
-                using (new EditorGUI.DisabledScope(locked || toRemove.Count == 0))
-                    if (GUILayout.Button($"Gỡ đã chọn ({toRemove.Count})", EditorStyles.toolbarButton, GUILayout.Width(110)))
-                        EditorApplication.delayCall += () =>
-                        {
-                            if (Remove(toRemove)) _selected.Clear();
-                        };
-                using (new EditorGUI.DisabledScope(_selected.Count == 0))
-                    if (GUILayout.Button("Bỏ chọn", EditorStyles.toolbarButton, GUILayout.Width(60)))
-                        _selected.Clear();
-                using (new EditorGUI.DisabledScope(locked || updates.Count == 0))
-                    if (GUILayout.Button($"Cập nhật tất cả ({updates.Count})", EditorStyles.toolbarButton, GUILayout.Width(150)))
-                        Run(() => InstallAsync(updates));
+                ModuleStyles.Status($"{installed} đã cài", ModuleStyles.Green, null, GUILayout.ExpandWidth(false));
+                GUILayout.Space(10);
+                ModuleStyles.Status($"{updates} có bản mới", updates > 0 ? ModuleStyles.Amber : ModuleStyles.Muted, null, GUILayout.ExpandWidth(false));
+                GUILayout.Space(10);
+                ModuleStyles.Status($"{notInstalled} chưa cài", ModuleStyles.Muted, null, GUILayout.ExpandWidth(false));
+                GUILayout.Space(16);
+                GUILayout.Label(new GUIContent(_status, _status), ModuleStyles.Sub, GUILayout.MinWidth(0), GUILayout.ExpandWidth(true));
             }
         }
 
@@ -351,12 +475,11 @@ namespace ModuleManager
         {
             _status = "Đang tải danh sách…";
             Repaint();
-            _releases = await SourceFactory.Create(Source, ProjectRoot).FetchAsync();
-            _byId = _releases.GroupBy(r => r.Id)
-                .ToDictionary(g => g.Key, g => g.OrderByDescending(r => SemVer.Parse(r.Version)).ToList());
-            _picked.Clear();
+            var releases = await SourceFactory.Create(Source, ProjectRoot).FetchAsync();
+            SetReleases(releases);
+            ReleaseCache.Save(ProjectRoot, Source, releases, DateTime.UtcNow);
             Rescan();
-            _status = $"{Source.name}: {_byId.Count} module, {_releases.Count} bản phát hành — {DateTime.Now:HH:mm}";
+            _status = $"{Source.name}: {_byId.Count} module, {_releases.Count} bản phát hành — Fetch lúc {DateTime.Now:HH:mm}";
         }
 
         /// <returns>true nếu đã cài xong (không lỗi, không huỷ).</returns>

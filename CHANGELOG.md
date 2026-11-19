@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.7.0
+
+- Lưu cache kết quả Fetch ở `Library/ModuleManager/Cache` (mỗi nguồn một file). Mở lại cửa sổ hoặc domain reload sau khi cài module thì danh sách vẫn còn, ghi rõ thời điểm dữ liệu. Publisher dùng chung cache và tự Fetch lại sau khi publish.
+- Không tải lại zip đã có trong `Library/ModuleManager/Downloads` nếu cùng tên và kích thước.
+- Giao diện mới: tab lớn, dải tóm tắt theo trạng thái, hàng tiêu đề cột, dòng 2 tầng (tên + nhãn UPM/UNITYPACKAGE, id · mô tả), nền dòng xen kẽ và tô màu khi chọn, trạng thái có màu, nút gỡ dạng biểu tượng, thanh thao tác cố định ở dưới. Lỗi kiểm tra của Publisher gom vào một mục gập được.
+
 ## 1.6.0
 
 - Menu gộp còn một mục `Window/Module Manager` (bỏ `Tools/Module Manager/Manager` và `/Publisher`). Cửa sổ nhớ tab đang mở.

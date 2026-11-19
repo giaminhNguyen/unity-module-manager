@@ -19,6 +19,13 @@ namespace ModuleManager
             var zips = new List<string>();
             for (var i = 0; i < plan.Count; i++)
             {
+                // Đã tải đúng file này (cùng tên, cùng kích thước) thì dùng lại; gói vẫn được kiểm tra id/version lúc cài.
+                var cached = Path.Combine(dir, plan[i].Target.AssetName ?? "");
+                if (plan[i].Target.Size > 0 && File.Exists(cached) && new FileInfo(cached).Length == plan[i].Target.Size)
+                {
+                    zips.Add(cached);
+                    continue;
+                }
                 progress?.Invoke($"Tải {plan[i].Target.AssetName}", (float)i / plan.Count);
                 zips.Add(await source.DownloadAsync(plan[i].Target, dir));
             }

@@ -34,6 +34,8 @@ namespace ModuleManager
         private string _status = "";
         private Vector2 _scroll;
         private bool _showDev;
+        private bool _showIssues;
+        private Vector2 _issuesScroll;
         private bool _showUncovered = true;
         private List<string> _uncovered = new List<string>();
         private readonly Dictionary<string, int> _addTarget = new Dictionary<string, int>();
@@ -45,6 +47,26 @@ namespace ModuleManager
             _settings = settings;
             _repaint = repaint;
             Rescan();
+            LoadCache();
+        }
+
+        /// <summary>Lấy danh sách đã publish từ lần Fetch trước (cache dùng chung với tab Manager).</summary>
+        private void LoadCache()
+        {
+            _fetched = false;
+            _published = new Dictionary<string, ModuleManifest>();
+            if (Source == null) return;
+            var cached = ReleaseCache.Load(ProjectRoot, Source, out var at);
+            if (cached == null) return;
+            SetPublished(cached);
+            _status = $"{Source.name}: {_published.Count} module đã publish · dữ liệu lúc {at.ToLocalTime():HH:mm dd/MM} (cache) — Fetch để cập nhật";
+        }
+
+        private void SetPublished(List<ModuleRelease> releases)
+        {
+            _published = releases.GroupBy(r => r.Id)
+                .ToDictionary(g => g.Key, g => g.OrderByDescending(r => SemVer.Parse(r.Version)).First().Manifest);
+            _fetched = true;
         }
 
         private void Repaint() => _repaint?.Invoke();
@@ -100,13 +122,19 @@ namespace ModuleManager
                 if (_settings.sources.Count == 0) GUILayout.Label("Chưa có nguồn — thêm ở tab Manager > Cấu hình", EditorStyles.miniLabel);
                 else
                 {
+                    GUILayout.Label("Nguồn", EditorStyles.miniLabel, GUILayout.ExpandWidth(false));
                     EditorGUI.BeginChangeCheck();
                     _sourceIndex = EditorGUILayout.Popup(_sourceIndex, _settings.sources.Select(s => s.name).ToArray(),
-                        EditorStyles.toolbarPopup, GUILayout.Width(170));
-                    if (EditorGUI.EndChangeCheck()) _fetched = false;
+                        EditorStyles.toolbarPopup, GUILayout.Width(150));
+                    if (EditorGUI.EndChangeCheck())
+                    {
+                        _status = "";
+                        LoadCache();
+                    }
                 }
                 using (new EditorGUI.DisabledScope(_busy || Source == null))
-                    if (GUILayout.Button(new GUIContent("Fetch", "Lấy các bản đã publish để so sánh"), EditorStyles.toolbarButton, GUILayout.Width(60)))
+                    if (GUILayout.Button(ModuleStyles.Icon("Refresh", " Fetch", "Lấy các bản đã publish để so sánh (kết quả được lưu cache)"),
+                            EditorStyles.toolbarButton, GUILayout.Width(70)))
                         Run(FetchAsync);
                 if (GUILayout.Button(new GUIContent("Quét lại", "Đọc lại manifest và tính lại hash nội dung"), EditorStyles.toolbarButton, GUILayout.Width(60)))
                     Rescan();
@@ -123,40 +151,59 @@ namespace ModuleManager
 
             DrawDevSettings();
 
-            foreach (var issue in _issues)
-                EditorGUILayout.HelpBox(issue.ToString(), MessageType.Error);
+            if (_issues.Count > 0) DrawIssues();
 
-            EditorGUILayout.LabelField(_status, EditorStyles.miniLabel);
-            EditorGUILayout.LabelField(new GUIContent("Changelog", "Ghi chú cho lần publish này, hiện trong Manager và trang release"));
-            _changelog = EditorGUILayout.TextArea(_changelog, GUILayout.MinHeight(48));
+            DrawSummary();
+            using (new EditorGUILayout.VerticalScope(ModuleStyles.Bar))
+            {
+                EditorGUILayout.LabelField(new GUIContent("Changelog", "Ghi chú cho lần publish này, hiện trong Manager và trang release"),
+                    EditorStyles.boldLabel);
+                _changelog = EditorGUILayout.TextArea(_changelog, GUILayout.MinHeight(44));
+            }
 
             _scroll = EditorGUILayout.BeginScrollView(_scroll);
+            ModuleManagerWindow.DrawColumns(("Nguồn", ModuleStyles.VersionWidth), ("Đã publish", ModuleStyles.VersionWidth + 10),
+                ("Trạng thái", ModuleStyles.StatusWidth), ("Mức tăng", 76), ("", 126));
             ModuleManagerWindow.DrawCategoryTree(_locals.Where(m => m.IsValid).ToList(), m => m.Manifest, DrawRow, _collapsed, _selected);
+            GUILayout.Space(8);
             DrawUncovered();
             EditorGUILayout.EndScrollView();
 
             var changed = Changed();
             var selected = _locals.Where(m => m.IsValid && _selected.Contains(m.Id)).ToList();
-            using (new EditorGUILayout.HorizontalScope(EditorStyles.toolbar))
+            ModuleStyles.BeginBar();
+            GUILayout.Label($"Đã chọn {selected.Count}", EditorStyles.boldLabel, GUILayout.Width(90), GUILayout.Height(22));
+            using (new EditorGUI.DisabledScope(_busy || selected.Count == 0))
             {
-                GUILayout.Label($"Đã chọn {selected.Count}", EditorStyles.miniLabel, GUILayout.Width(70));
-                using (new EditorGUI.DisabledScope(_busy || selected.Count == 0))
-                {
-                    _batchBump = (BumpKind)EditorGUILayout.EnumPopup(_batchBump, EditorStyles.toolbarPopup, GUILayout.Width(70));
-                    if (GUILayout.Button(new GUIContent("Áp mức tăng", "Đặt mức tăng version này cho mọi mục đang chọn"),
-                            EditorStyles.toolbarButton, GUILayout.Width(85)))
-                        foreach (var m in selected) _bump[m.Id] = _batchBump;
-                }
-                using (new EditorGUI.DisabledScope(_busy || !_fetched || selected.Count == 0))
-                    if (GUILayout.Button($"Publish đã chọn ({selected.Count})", EditorStyles.toolbarButton, GUILayout.Width(140)))
-                        Run(() => PublishManyAsync(selected));
-                using (new EditorGUI.DisabledScope(_selected.Count == 0))
-                    if (GUILayout.Button("Bỏ chọn", EditorStyles.toolbarButton, GUILayout.Width(60)))
-                        _selected.Clear();
-                GUILayout.FlexibleSpace();
-                using (new EditorGUI.DisabledScope(_busy || !_fetched || changed.Count == 0))
-                    if (GUILayout.Button($"Publish tất cả module đã đổi ({changed.Count})", EditorStyles.toolbarButton, GUILayout.Width(230)))
-                        Run(() => PublishManyAsync(changed));
+                _batchBump = (BumpKind)EditorGUILayout.EnumPopup(_batchBump, GUILayout.Width(70), GUILayout.Height(22));
+                if (GUILayout.Button(new GUIContent("Áp mức tăng", "Đặt mức tăng version này cho mọi mục đang chọn"),
+                        GUILayout.Width(95), GUILayout.Height(22)))
+                    foreach (var m in selected) _bump[m.Id] = _batchBump;
+            }
+            using (new EditorGUI.DisabledScope(_busy || !_fetched || selected.Count == 0))
+                if (GUILayout.Button($"Publish ({selected.Count})", GUILayout.Width(100), GUILayout.Height(22)))
+                    Run(() => PublishManyAsync(selected));
+            using (new EditorGUI.DisabledScope(_selected.Count == 0))
+                if (GUILayout.Button("Bỏ chọn", GUILayout.Width(70), GUILayout.Height(22)))
+                    _selected.Clear();
+            GUILayout.FlexibleSpace();
+            using (new EditorGUI.DisabledScope(_busy || !_fetched || changed.Count == 0))
+                if (GUILayout.Button($"Publish tất cả đã đổi ({changed.Count})", GUILayout.Width(190), GUILayout.Height(22)))
+                    Run(() => PublishManyAsync(changed));
+            ModuleStyles.EndBar();
+        }
+
+        /// <summary>Lỗi kiểm tra gom vào một mục gập được, cuộn khi dài; dòng module bị lỗi hiện "Bị chặn" kèm lý do.</summary>
+        private void DrawIssues()
+        {
+            using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox))
+            {
+                var title = new GUIContent($" {_issues.Count} lỗi cần sửa trước khi publish", EditorGUIUtility.IconContent("console.erroricon.sml").image);
+                _showIssues = EditorGUILayout.Foldout(_showIssues, title, true);
+                if (!_showIssues) return;
+                _issuesScroll = EditorGUILayout.BeginScrollView(_issuesScroll, GUILayout.MaxHeight(140));
+                foreach (var issue in _issues) EditorGUILayout.LabelField("• " + issue, ModuleStyles.Hint);
+                EditorGUILayout.EndScrollView();
             }
         }
 
@@ -272,18 +319,62 @@ namespace ModuleManager
         private void DrawRow(InstalledModule m)
         {
             _published.TryGetValue(m.Id, out var pub);
-            using (new EditorGUILayout.HorizontalScope())
+            var blocked = Blocked(m);
+            using (new EditorGUILayout.HorizontalScope(GUILayout.MinHeight(ModuleStyles.RowHeight)))
             {
-                GUILayout.Label(new GUIContent(m.Manifest.Title, m.Id), GUILayout.Width(230));
-                GUILayout.Label(new GUIContent(m.Version, "Version trong manifest nguồn"), GUILayout.Width(70));
-                GUILayout.Label(new GUIContent(_fetched ? pub?.version ?? "—" : "?", "Bản mới nhất trên nguồn"), GUILayout.Width(70));
-                GUILayout.Label(Status(m), GUILayout.Width(110));
-                _bump.TryGetValue(m.Id, out var kind);
-                _bump[m.Id] = (BumpKind)EditorGUILayout.EnumPopup(kind, GUILayout.Width(70));
-                var next = _fetched ? ModulePublisher.NextVersion(m.Version, pub?.version, _bump[m.Id]) : "?";
-                using (new EditorGUI.DisabledScope(_busy || !_fetched || Blocked(m) != null))
-                    if (GUILayout.Button(new GUIContent($"Publish {next}", Blocked(m) ?? ""), GUILayout.Width(120)))
-                        Run(() => PublishManyAsync(new List<InstalledModule> { m }));
+                GUILayout.Space(ModuleStyles.ArrowWidth);
+                ModuleManagerWindow.DrawNameCell(m.Manifest);
+                ModuleStyles.CellLabel(new GUIContent(m.Version, "Version trong manifest nguồn"), ModuleStyles.VersionWidth);
+                ModuleStyles.CellLabel(new GUIContent(_fetched ? pub?.version ?? "—" : "?", "Bản mới nhất trên nguồn"), ModuleStyles.VersionWidth + 10);
+
+                using (new EditorGUILayout.VerticalScope(GUILayout.Width(ModuleStyles.StatusWidth)))
+                {
+                    GUILayout.FlexibleSpace();
+                    var status = Status(m);
+                    if (blocked != null) ModuleStyles.Status("Bị chặn", ModuleStyles.Red, blocked);
+                    else if (status == "Khớp") ModuleStyles.Status(status, ModuleStyles.Green);
+                    else if (status == "Đã đổi") ModuleStyles.Status(status, ModuleStyles.Amber);
+                    else if (status == "Chưa publish") ModuleStyles.Status(status, ModuleStyles.Blue);
+                    else ModuleStyles.Status("Chưa Fetch", ModuleStyles.Muted);
+                    GUILayout.FlexibleSpace();
+                }
+
+                using (new EditorGUILayout.VerticalScope(GUILayout.Width(76)))
+                {
+                    GUILayout.FlexibleSpace();
+                    _bump.TryGetValue(m.Id, out var kind);
+                    _bump[m.Id] = (BumpKind)EditorGUILayout.EnumPopup(kind, GUILayout.Width(70));
+                    GUILayout.FlexibleSpace();
+                }
+
+                using (new EditorGUILayout.VerticalScope(GUILayout.Width(126)))
+                {
+                    GUILayout.FlexibleSpace();
+                    var next = _fetched ? ModulePublisher.NextVersion(m.Version, pub?.version, _bump[m.Id]) : "?";
+                    using (new EditorGUI.DisabledScope(_busy || !_fetched || blocked != null))
+                        if (GUILayout.Button(new GUIContent($"Publish {next}", blocked ?? ""), GUILayout.Width(120), GUILayout.Height(22)))
+                            Run(() => PublishManyAsync(new List<InstalledModule> { m }));
+                    GUILayout.FlexibleSpace();
+                }
+            }
+        }
+
+        /// <summary>Dải tóm tắt: đếm theo trạng thái + thời điểm dữ liệu / thông báo gần nhất.</summary>
+        private void DrawSummary()
+        {
+            var valid = _locals.Where(m => m.IsValid).ToList();
+            using (new EditorGUILayout.HorizontalScope(ModuleStyles.Bar))
+            {
+                if (_fetched)
+                {
+                    ModuleStyles.Status($"{valid.Count(m => Status(m) == "Khớp")} khớp", ModuleStyles.Green, null, GUILayout.ExpandWidth(false));
+                    GUILayout.Space(10);
+                    ModuleStyles.Status($"{valid.Count(m => Status(m) == "Đã đổi")} đã đổi", ModuleStyles.Amber, null, GUILayout.ExpandWidth(false));
+                    GUILayout.Space(10);
+                    ModuleStyles.Status($"{valid.Count(m => Status(m) == "Chưa publish")} chưa publish", ModuleStyles.Blue, null, GUILayout.ExpandWidth(false));
+                    GUILayout.Space(16);
+                }
+                GUILayout.Label(new GUIContent(_status, _status), ModuleStyles.Sub, GUILayout.MinWidth(0), GUILayout.ExpandWidth(true));
             }
         }
 
@@ -316,10 +407,9 @@ namespace ModuleManager
             _status = "Đang tải danh sách…";
             Repaint();
             var releases = await SourceFactory.Create(Source, ProjectRoot).FetchAsync();
-            _published = releases.GroupBy(r => r.Id)
-                .ToDictionary(g => g.Key, g => g.OrderByDescending(r => SemVer.Parse(r.Version)).First().Manifest);
-            _fetched = true;
-            _status = $"{Source.name}: {_published.Count} module đã publish — {DateTime.Now:HH:mm}";
+            SetPublished(releases);
+            ReleaseCache.Save(ProjectRoot, Source, releases, DateTime.UtcNow);
+            _status = $"{Source.name}: {_published.Count} module đã publish — Fetch lúc {DateTime.Now:HH:mm}";
         }
 
         private async Task PublishManyAsync(List<InstalledModule> modules)
@@ -357,6 +447,10 @@ namespace ModuleManager
                 }
             }
             _changelog = "";
+            // Lấy lại danh sách để trạng thái và cache khớp các bản vừa publish.
+            var summary = _status;
+            await FetchAsync();
+            _status = summary;
         }
 
         private BumpKind Kind(InstalledModule m) => _bump.TryGetValue(m.Id, out var k) ? k : BumpKind.Patch;
