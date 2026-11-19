@@ -145,6 +145,8 @@ namespace ModuleManager
                             break;
                         }
                     }
+                    s.installRoot = EditorGUILayout.TextField(new GUIContent("    Thư mục cài",
+                        "Vd Assets/Working: thay thư mục cấp đầu dưới Assets/ của gói. Trống = cài đúng đường dẫn như ở project nguồn."), s.installRoot);
                 }
                 if (GUILayout.Button("Thêm nguồn", GUILayout.Width(110)))
                     _settings.sources.Add(new SourceConfig { name = "Nguồn mới", type = SourceConfig.GitHub, location = "owner/repo" });
@@ -277,6 +279,7 @@ namespace ModuleManager
 
             var missing = ModuleInstaller.MissingPackages(ProjectRoot, plan.Select(s => s.Target.Manifest));
             var message = string.Join("\n", plan.Select(s => "• " + s.Describe()));
+            if (!string.IsNullOrWhiteSpace(Source.installRoot)) message += "\n\nCài vào: " + Source.installRoot.Trim();
             if (plan.Any(s => s.Installed != null)) message += "\n\nThư mục cũ của module được cập nhật sẽ bị xoá rồi chép bản mới.";
             if (missing.Count > 0) message += "\n\nThêm package: " + string.Join(", ", missing.Select(p => p.name));
             if (!EditorUtility.DisplayDialog("Module Manager", message, "Thực hiện", "Huỷ")) return;
@@ -285,7 +288,7 @@ namespace ModuleManager
             var zips = await ModuleInstaller.DownloadAsync(source, plan, DownloadDir,
                 (info, p) => EditorUtility.DisplayProgressBar("Module Manager", info, p));
             EditorUtility.DisplayProgressBar("Module Manager", "Chép file…", 1f);
-            ModuleInstaller.Apply(ProjectRoot, plan, zips, _installed);
+            ModuleInstaller.Apply(ProjectRoot, plan, zips, _installed, Source.installRoot);
             AssetDatabase.Refresh();
             if (missing.Count > 0) AddPackages(missing);
             _status = "Xong: " + string.Join(", ", plan.Select(s => $"{s.Target.Manifest.Title} {s.Target.Version}"));

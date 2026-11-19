@@ -61,6 +61,12 @@ Chưa có nguồn nào thì Manager hiện hướng dẫn thêm.
 | `GitHub` | `owner/repo` |
 | `Folder` | Đường dẫn thư mục (tuyệt đối, hoặc tương đối root project). Dùng thử offline hoặc chia sẻ qua ổ mạng. |
 
+`installRoot` (ô **Thư mục cài**, tuỳ chọn): nơi đặt module trong project này, vd `Assets/Working`.
+Manager thay thư mục cấp đầu dưới `Assets/` của gói bằng thư mục này: module phát hành từ `Assets/InWorking/Toppic/Base`
+được cài vào `Assets/Working/Toppic/Base`. Để trống thì cài đúng đường dẫn như ở project nguồn.
+Muốn dùng thì ở project nguồn, mọi module phải nằm chung dưới một thư mục cấp đầu trong `Assets/`.
+Đổi `installRoot` khi đã có module cài: module nào được cập nhật sẽ bị xoá ở chỗ cũ rồi chép vào chỗ mới.
+
 ### Định dạng release trên GitHub
 
 | | |

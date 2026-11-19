@@ -13,7 +13,7 @@ namespace ModuleManager.Tests
     /// <summary>Toàn bộ luồng publish → cài → cập nhật → gỡ qua FolderSource, trên project giả.</summary>
     public class PublishInstallTests
     {
-        private string _src, _dst, _feed;
+        private string _src, _dst, _feed, _installRoot;
 
         [SetUp]
         public void SetUp()
@@ -21,6 +21,7 @@ namespace ModuleManager.Tests
             _src = NewRoot();
             _dst = NewRoot();
             _feed = Path.Combine(_src, "Feed");
+            _installRoot = null;
 
             Dir(_src, "Assets/Fw");
             Dir(_src, "Assets/Fw/Modules");
@@ -63,7 +64,41 @@ namespace ModuleManager.Tests
             var plan = ModuleResolver.Plan(installed, releases, latest.Where(r => ids.Contains(r.Id)), errors);
             CollectionAssert.IsEmpty(errors);
             var zips = ModuleInstaller.DownloadAsync(Feed, plan, Path.Combine(_dst, "Dl")).Result;
-            ModuleInstaller.Apply(_dst, plan, zips, installed);
+            ModuleInstaller.Apply(_dst, plan, zips, installed, _installRoot);
+        }
+
+        [Test]
+        public void InstallIntoCustomRoot()
+        {
+            PublishAll();
+            _installRoot = "Assets/Game/Working/";
+            Install("t.b");
+            Assert.AreEqual("v1", Read(_dst, "Assets/Game/Working/A/a1.cs"));
+            Assert.IsTrue(Exists(_dst, "Assets/Game/Working/B/b.cs.meta"));
+            Assert.IsTrue(Exists(_dst, "Assets/Game/Working/Modules/b.module.json"));
+            Assert.IsTrue(Exists(_dst, "Assets/Game/Working.meta"), "meta thư mục gốc đổi theo thư mục cài");
+            Assert.IsFalse(Exists(_dst, "Assets/Fw"));
+            var a = ModuleFiles.Scan(_dst).Single(m => m.Id == "t.a");
+            CollectionAssert.AreEqual(new[] { "Assets/Game/Working/A" }, a.Paths);
+
+            // Cập nhật vẫn ghi vào thư mục cài
+            File.WriteAllText(Path.Combine(_src, "Assets/Fw/A/a1.cs"), "v2");
+            ModulePublisher.PublishAsync(Feed, _src, ModuleFiles.Scan(_src).Single(m => m.Id == "t.a"), "1.0.0", BumpKind.Patch, "",
+                Path.Combine(_src, "Out")).GetAwaiter().GetResult();
+            Install("t.a");
+            Assert.AreEqual("v2", Read(_dst, "Assets/Game/Working/A/a1.cs"));
+            Assert.IsFalse(Exists(_dst, "Assets/Fw"));
+        }
+
+        [Test]
+        public void MapRootRejectsBadInput()
+        {
+            Assert.AreEqual("Assets/Fw/A/a.cs", ModuleFiles.MapRoot("Assets/Fw/A/a.cs", " "));
+            Assert.AreEqual("Assets/W/A/a.cs", ModuleFiles.MapRoot("Assets/Fw/A/a.cs", "Assets\\W"));
+            Assert.Throws<FormatException>(() => ModuleFiles.MapRoot("Assets/Fw/a.cs", "Assets"));
+            Assert.Throws<FormatException>(() => ModuleFiles.MapRoot("Assets/Fw/a.cs", "Assets/../x"));
+            Assert.Throws<FormatException>(() => ModuleFiles.MapRoot("Assets/Fw/a.cs", "Other/W"));
+            Assert.Throws<InvalidDataException>(() => ModuleFiles.MapRoot("Assets/a.cs", "Assets/W"));
         }
 
         [Test]

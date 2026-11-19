@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.0
+
+- Nguồn có thêm `installRoot` (ô Thư mục cài): cài module vào thư mục tuỳ chọn, vd `Assets/Working`, thay cho thư mục cấp đầu dưới `Assets/` của gói.
+
 ## 1.0.0
 
 - Tách Module Manager thành UPM package độc lập, không gắn với framework nào.

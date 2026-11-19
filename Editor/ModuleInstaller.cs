@@ -25,7 +25,10 @@ namespace ModuleManager
             return zips;
         }
 
-        public static void Apply(string projectRoot, IList<PlanStep> plan, IList<string> zips, IEnumerable<InstalledModule> installed)
+        /// <param name="installRoot">Thư mục cài thay cho thư mục cấp đầu dưới Assets/ của gói. Null = giữ đường dẫn gốc.
+        /// Module đã cài ở chỗ khác được xoá ở chỗ cũ rồi chép vào installRoot.</param>
+        public static void Apply(string projectRoot, IList<PlanStep> plan, IList<string> zips, IEnumerable<InstalledModule> installed,
+            string installRoot = null)
         {
             if (plan.Count != zips.Count) throw new ArgumentException("Số gói không khớp số bước");
 
@@ -36,7 +39,7 @@ namespace ModuleManager
 
             for (var i = 0; i < plan.Count; i++)
             {
-                var info = ModuleFiles.ReadPackage(zips[i]);
+                var info = ModuleFiles.ReadPackage(zips[i], installRoot);
                 var t = plan[i].Target.Manifest;
                 if (info.Manifest.id != t.id || info.Manifest.version != t.version)
                     throw new InvalidDataException($"Gói {Path.GetFileName(zips[i])} là {info.Manifest.id} {info.Manifest.version}, không khớp {t.id} {t.version}");
@@ -53,7 +56,7 @@ namespace ModuleManager
             for (var i = 0; i < plan.Count; i++)
             {
                 if (plan[i].Installed != null) ModuleFiles.Delete(projectRoot, plan[i].Installed);
-                ModuleFiles.Extract(zips[i], projectRoot);
+                ModuleFiles.Extract(zips[i], projectRoot, installRoot);
             }
         }
 

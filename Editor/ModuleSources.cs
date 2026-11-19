@@ -49,6 +49,9 @@ namespace ModuleManager
 
         [Tooltip("GitHub: owner/repo. Folder: đường dẫn thư mục (tuyệt đối hoặc tương đối root project).")]
         public string location;
+
+        [Tooltip("Thư mục cài trong project này (vd Assets/Working). Thay thư mục cấp đầu dưới Assets/ của gói. Trống = cài đúng đường dẫn như ở project nguồn.")]
+        public string installRoot;
     }
 
     /// <summary>Cấu hình theo project, lưu ở ProjectSettings/ModuleManagerSettings.json (commit cùng project).</summary>

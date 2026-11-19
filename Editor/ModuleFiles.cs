@@ -244,16 +244,16 @@ namespace ModuleManager
         /// Đọc và kiểm tra gói zip. Gói là dữ liệu tải từ ngoài nên mọi entry phải nằm trong Assets/,
         /// thuộc paths của chính module, hoặc là .meta của thư mục cha — không thì ném lỗi.
         /// </summary>
-        public static PackageInfo ReadPackage(string zipPath)
+        public static PackageInfo ReadPackage(string zipPath, string installRoot = null)
         {
             var info = new PackageInfo();
             using (var zip = new ZipArchive(File.OpenRead(zipPath), ZipArchiveMode.Read))
             {
                 foreach (var e in zip.Entries)
                 {
-                    var name = e.FullName;
-                    if (name.EndsWith("/", StringComparison.Ordinal)) continue;
-                    if (!IsSafeEntry(name)) throw new InvalidDataException($"Gói chứa đường dẫn không hợp lệ: '{name}'");
+                    if (e.FullName.EndsWith("/", StringComparison.Ordinal)) continue;
+                    if (!IsSafeEntry(e.FullName)) throw new InvalidDataException($"Gói chứa đường dẫn không hợp lệ: '{e.FullName}'");
+                    var name = MapRoot(e.FullName, installRoot);
                     info.Entries.Add(name);
                     if (!name.EndsWith(ModuleManifest.FileSuffix, StringComparison.OrdinalIgnoreCase)) continue;
                     if (info.Manifest != null) throw new InvalidDataException("Gói chứa nhiều hơn một *.module.json");
@@ -272,19 +272,20 @@ namespace ModuleManager
         }
 
         /// <summary>Giải nén gói vào project. File không thuộc module (meta thư mục cha) chỉ ghi nếu chưa có.</summary>
-        public static int Extract(string zipPath, string projectRoot)
+        public static int Extract(string zipPath, string projectRoot, string installRoot = null)
         {
-            var info = ReadPackage(zipPath);
+            var info = ReadPackage(zipPath, installRoot);
             var written = 0;
             using (var zip = new ZipArchive(File.OpenRead(zipPath), ZipArchiveMode.Read))
             {
                 foreach (var e in zip.Entries)
                 {
                     if (e.FullName.EndsWith("/", StringComparison.Ordinal)) continue;
-                    var target = Full(projectRoot, e.FullName);
+                    var name = MapRoot(e.FullName, installRoot);
+                    var target = Full(projectRoot, name);
                     if (File.Exists(target))
                     {
-                        if (!IsOwned(e.FullName, info)) continue;
+                        if (!IsOwned(name, info)) continue;
                         File.SetAttributes(target, FileAttributes.Normal);
                     }
                     Directory.CreateDirectory(Path.GetDirectoryName(target));
@@ -320,6 +321,21 @@ namespace ModuleManager
                 File.SetAttributes(full, FileAttributes.Normal);
                 File.Delete(full);
             }
+        }
+
+        /// <summary>
+        /// Đổi thư mục cấp đầu dưới Assets/ của một entry sang installRoot
+        /// (Assets/InWorking/X → Assets/Working/X, Assets/InWorking.meta → Assets/Working.meta). installRoot trống = giữ nguyên.
+        /// </summary>
+        public static string MapRoot(string entry, string installRoot)
+        {
+            if (string.IsNullOrWhiteSpace(installRoot)) return entry;
+            var root = Norm(installRoot.Trim()).TrimEnd('/');
+            if (!IsSafeEntry(root)) throw new FormatException($"Thư mục cài '{installRoot}' phải là thư mục con của Assets/ (vd Assets/Working)");
+            var slash = entry.IndexOf('/', "Assets/".Length);
+            if (slash >= 0) return root + entry.Substring(slash);
+            if (entry.EndsWith(".meta", StringComparison.Ordinal)) return root + ".meta";
+            throw new InvalidDataException($"'{entry}' nằm thẳng trong Assets/, không đổi được thư mục cài");
         }
 
         private static bool IsSafeEntry(string n) =>
