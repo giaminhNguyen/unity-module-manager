@@ -14,6 +14,8 @@ namespace ModuleManager.Tests
     ///   MM_INSTALL_IDS   — id module cần cài thử, cách nhau dấu phẩy (mặc định module cuối trong thứ tự phụ thuộc)
     ///   MM_INSTALL_INTO  — root một project Unity để cài thật vào (dùng cho bước compile thử); bỏ trống = thư mục tạm
     ///   MM_FEED_OUT      — giữ lại thư mục chứa zip mọi module (FolderSource) để dùng tiếp; bỏ trống = xoá sau test
+    ///   MM_INSTALL_ROOT  — installRoot khi cài thử (vd Assets/Working); bỏ trống = giữ đường dẫn nguồn
+    /// Thư mục .unitypackage lấy từ ProjectSettings/ModuleManagerSettings.json của project nguồn.
     /// </summary>
     public class RealSourceTests
     {
@@ -26,7 +28,8 @@ namespace ModuleManager.Tests
             if (string.IsNullOrEmpty(root)) Assert.Ignore("Đặt MM_SOURCE_ROOT để kiểm tra một project nguồn thật");
 
             var locals = ModuleFiles.Scan(root);
-            var issues = ModulePublisher.Validate(root, locals).Select(i => i.ToString()).ToList();
+            var upDir = ManagerSettings.Load(root).UnityPackageDir(root);
+            var issues = ModulePublisher.Validate(root, locals, upDir).Select(i => i.ToString()).ToList();
             Assert.IsEmpty(issues, string.Join("\n", issues));
             TestContext.WriteLine($"{locals.Count} module hợp lệ");
 
@@ -38,7 +41,7 @@ namespace ModuleManager.Tests
                 var feed = new FolderSource(string.IsNullOrEmpty(Env("MM_FEED_OUT")) ? Path.Combine(temp, "Feed") : Env("MM_FEED_OUT"));
                 foreach (var m in ModulePublisher.TopoOrder(locals))
                 {
-                    var zip = ModulePublisher.Pack(root, m, Path.Combine(temp, "Out"), out var published);
+                    var zip = ModulePublisher.Pack(root, m, Path.Combine(temp, "Out"), out var published, upDir);
                     feed.PublishAsync(published, "", zip).GetAwaiter().GetResult();
                     TestContext.WriteLine($"{m.Id,-45} {new FileInfo(zip).Length / 1024,6} KB");
                 }
@@ -52,7 +55,8 @@ namespace ModuleManager.Tests
                 var plan = ModuleResolver.Plan(installed, releases, releases.Where(r => ids.Contains(r.Id)), errors);
                 Assert.IsEmpty(errors, string.Join("\n", errors));
                 var zips = ModuleInstaller.DownloadAsync(feed, plan, Path.Combine(temp, "Dl")).Result;
-                ModuleInstaller.Apply(into, plan, zips, installed);
+                var imports = ModuleInstaller.Apply(into, plan, zips, installed, Env("MM_INSTALL_ROOT"));
+                if (imports.Count > 0) TestContext.WriteLine("Cần import:\n" + string.Join("\n", imports));
 
                 var after = ModuleFiles.Scan(into).Select(m => m.Id).ToList();
                 TestContext.WriteLine("Đã cài vào " + into + ": " + string.Join(", ", after));
