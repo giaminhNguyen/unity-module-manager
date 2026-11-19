@@ -20,6 +20,17 @@ namespace ModuleManager.Tests
         private static InstalledModule Module(string id, string manifestPath, params string[] paths) =>
             new InstalledModule { Manifest = Manifest(id, "1.0.0", new[] { "x" }), ManifestPath = manifestPath, Paths = paths.ToList() };
 
+        // ───────────────────────── CategoryPath ─────────────────────────
+
+        [TestCase("Toppic/UI", new[] { "Toppic", "UI" })]
+        [TestCase(" Toppic / UI /", new[] { "Toppic", "UI" })]
+        [TestCase("Tools", new[] { "Tools" })]
+        [TestCase("", new[] { "Khác" })]
+        [TestCase(null, new[] { "Khác" })]
+        [TestCase("//", new[] { "Khác" })]
+        public void CategoryPathSplitsFolders(string category, string[] expected) =>
+            CollectionAssert.AreEqual(expected, new ModuleManifest { category = category }.CategoryPath);
+
         // ───────────────────────── RelativePath ─────────────────────────
 
         [TestCase("Assets/Modules", "Assets/Toppic/Popup", "../Toppic/Popup")]

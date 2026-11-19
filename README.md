@@ -46,7 +46,10 @@ Ghim version bằng tag: `https://github.com/giaminhNguyen/unity-module-manager.
 }
 ```
 
-- `paths` tính **tương đối thư mục chứa manifest** và phải nằm trong `Assets/`. Module cài ra đúng chỗ nó nằm ở project nguồn.
+- `category` là nhóm hiển thị trong Manager và Publisher. Dùng `/` để chia nhiều cấp thư mục, vd `Toppic/UI` hiện thành
+  thư mục `UI` nằm trong `Toppic`. Trống thì vào nhóm `Khác`.
+- `paths` tính **tương đối thư mục chứa manifest** và phải nằm trong `Assets/`. Module cài ra đúng chỗ nó nằm ở project nguồn
+  (hoặc dưới `installRoot` của nguồn, xem phần Nguồn).
 - `dependencies.version` là version **tối thiểu**. Manager tự cài kèm hoặc nâng module phụ thuộc.
 - `packages`: package UPM cần có. Thiếu thì Manager thêm vào `Packages/manifest.json` sau khi cài.
 - `version`, `contentHash` do Publisher ghi. Không sửa tay `contentHash`.

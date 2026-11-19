@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.0
+
+- `category` chia nhiều cấp bằng `/` (vd `Toppic/UI`): Manager và Publisher hiện danh sách thành cây thư mục gập/mở được.
+
 ## 1.1.0
 
 - Nguồn có thêm `installRoot` (ô Thư mục cài): cài module vào thư mục tuỳ chọn, vd `Assets/Working`, thay cho thư mục cấp đầu dưới `Assets/` của gói.

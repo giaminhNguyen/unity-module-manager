@@ -24,6 +24,7 @@ namespace ModuleManager
         private Dictionary<string, string> _hashes = new Dictionary<string, string>();
         private Dictionary<string, ModuleManifest> _published = new Dictionary<string, ModuleManifest>();
         private readonly Dictionary<string, BumpKind> _bump = new Dictionary<string, BumpKind>();
+        private readonly HashSet<string> _collapsed = new HashSet<string>();
         private bool _fetched;
         private bool _busy;
         private string _changelog = "";
@@ -129,11 +130,7 @@ namespace ModuleManager
             _changelog = EditorGUILayout.TextArea(_changelog, GUILayout.MinHeight(48));
 
             _scroll = EditorGUILayout.BeginScrollView(_scroll);
-            foreach (var group in _locals.Where(m => m.IsValid).GroupBy(m => m.Manifest.category).OrderBy(g => g.Key, StringComparer.Ordinal))
-            {
-                EditorGUILayout.LabelField(group.Key, EditorStyles.boldLabel);
-                foreach (var m in group.OrderBy(m => m.Manifest.Title, StringComparer.OrdinalIgnoreCase)) DrawRow(m);
-            }
+            ModuleManagerWindow.DrawCategoryTree(_locals.Where(m => m.IsValid).ToList(), m => m.Manifest, DrawRow, _collapsed);
             DrawUncovered();
             EditorGUILayout.EndScrollView();
 

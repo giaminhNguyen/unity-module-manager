@@ -77,22 +77,51 @@ namespace ModuleManager
                             r.manifest.Title.IndexOf(_search, StringComparison.OrdinalIgnoreCase) >= 0 ||
                             r.id.IndexOf(_search, StringComparison.OrdinalIgnoreCase) >= 0);
 
-            foreach (var group in rows.GroupBy(r => r.manifest.category).OrderBy(g => g.Key, StringComparer.Ordinal))
-            {
-                var open = !_collapsed.Contains(group.Key);
-                var now = EditorGUILayout.Foldout(open, $"{group.Key} ({group.Count()})", true, EditorStyles.foldoutHeader);
-                if (now != open)
-                {
-                    if (now) _collapsed.Remove(group.Key);
-                    else _collapsed.Add(group.Key);
-                }
-                if (!now) continue;
-                foreach (var r in group.OrderBy(r => r.manifest.Title, StringComparer.OrdinalIgnoreCase)) DrawRow(r.id);
-                EditorGUILayout.Space(4);
-            }
+            DrawCategoryTree(rows.ToList(), r => r.manifest, r => DrawRow(r.id), _collapsed);
             EditorGUILayout.EndScrollView();
 
             DrawFooter();
+        }
+
+        /// <summary>
+        /// Vẽ danh sách thành cây foldout theo category dạng "A/B/C" (dữ liệu từ manifest, tool không biết trước nhóm nào).
+        /// Trạng thái gập lưu theo đường dẫn đầy đủ của nhóm.
+        /// </summary>
+        internal static void DrawCategoryTree<T>(IList<T> items, Func<T, ModuleManifest> manifest, Action<T> drawRow,
+            HashSet<string> collapsed) =>
+            DrawCategoryLevel(items.Select(i => (path: manifest(i).CategoryPath, title: manifest(i).Title, item: i)).ToList(),
+                0, "", drawRow, collapsed);
+
+        private static void DrawCategoryLevel<T>(List<(string[] path, string title, T item)> items, int depth, string prefix,
+            Action<T> drawRow, HashSet<string> collapsed)
+        {
+            foreach (var r in items.Where(x => x.path.Length == depth).OrderBy(x => x.title, StringComparer.OrdinalIgnoreCase))
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    GUILayout.Space(depth * 14);
+                    using (new EditorGUILayout.VerticalScope()) drawRow(r.item);
+                }
+
+            foreach (var g in items.Where(x => x.path.Length > depth).GroupBy(x => x.path[depth]).OrderBy(g => g.Key, StringComparer.Ordinal))
+            {
+                var key = prefix + g.Key;
+                var open = !collapsed.Contains(key);
+                bool now;
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    GUILayout.Space(depth * 14);
+                    now = EditorGUILayout.Foldout(open, $"{g.Key} ({g.Count()})", true,
+                        depth == 0 ? EditorStyles.foldoutHeader : EditorStyles.foldout);
+                }
+                if (now != open)
+                {
+                    if (now) collapsed.Remove(key);
+                    else collapsed.Add(key);
+                }
+                if (!now) continue;
+                DrawCategoryLevel(g.ToList(), depth + 1, key + "/", drawRow, collapsed);
+                if (depth == 0) EditorGUILayout.Space(4);
+            }
         }
 
         private void DrawToolbar()

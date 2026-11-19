@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
 namespace ModuleManager
@@ -41,6 +42,16 @@ namespace ModuleManager
         public string contentHash;
 
         public string Title => string.IsNullOrWhiteSpace(displayName) ? id : displayName;
+
+        /// <summary>Các cấp thư mục hiển thị, tách từ category dạng "A/B/C". Trống = "Khác".</summary>
+        public string[] CategoryPath
+        {
+            get
+            {
+                var parts = (category ?? "").Split('/').Select(s => s.Trim()).Where(s => s.Length > 0).ToArray();
+                return parts.Length > 0 ? parts : new[] { "Khác" };
+            }
+        }
 
         /// <summary>Parse và kiểm tra tối thiểu. Ném FormatException nếu thiếu id / version / paths.</summary>
         public static ModuleManifest Parse(string json)
