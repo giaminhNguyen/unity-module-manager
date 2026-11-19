@@ -26,6 +26,8 @@ namespace ModuleManager
         private Dictionary<string, ModuleManifest> _published = new Dictionary<string, ModuleManifest>();
         private readonly Dictionary<string, BumpKind> _bump = new Dictionary<string, BumpKind>();
         private readonly HashSet<string> _collapsed = new HashSet<string>();
+        private readonly HashSet<string> _selected = new HashSet<string>();
+        private BumpKind _batchBump;
         private bool _fetched;
         private bool _busy;
         private string _changelog = "";
@@ -131,13 +133,28 @@ namespace ModuleManager
             _changelog = EditorGUILayout.TextArea(_changelog, GUILayout.MinHeight(48));
 
             _scroll = EditorGUILayout.BeginScrollView(_scroll);
-            ModuleManagerWindow.DrawCategoryTree(_locals.Where(m => m.IsValid).ToList(), m => m.Manifest, DrawRow, _collapsed);
+            ModuleManagerWindow.DrawCategoryTree(_locals.Where(m => m.IsValid).ToList(), m => m.Manifest, DrawRow, _collapsed, _selected);
             DrawUncovered();
             EditorGUILayout.EndScrollView();
 
             var changed = Changed();
+            var selected = _locals.Where(m => m.IsValid && _selected.Contains(m.Id)).ToList();
             using (new EditorGUILayout.HorizontalScope(EditorStyles.toolbar))
             {
+                GUILayout.Label($"Đã chọn {selected.Count}", EditorStyles.miniLabel, GUILayout.Width(70));
+                using (new EditorGUI.DisabledScope(_busy || selected.Count == 0))
+                {
+                    _batchBump = (BumpKind)EditorGUILayout.EnumPopup(_batchBump, EditorStyles.toolbarPopup, GUILayout.Width(70));
+                    if (GUILayout.Button(new GUIContent("Áp mức tăng", "Đặt mức tăng version này cho mọi mục đang chọn"),
+                            EditorStyles.toolbarButton, GUILayout.Width(85)))
+                        foreach (var m in selected) _bump[m.Id] = _batchBump;
+                }
+                using (new EditorGUI.DisabledScope(_busy || !_fetched || selected.Count == 0))
+                    if (GUILayout.Button($"Publish đã chọn ({selected.Count})", EditorStyles.toolbarButton, GUILayout.Width(140)))
+                        Run(() => PublishManyAsync(selected));
+                using (new EditorGUI.DisabledScope(_selected.Count == 0))
+                    if (GUILayout.Button("Bỏ chọn", EditorStyles.toolbarButton, GUILayout.Width(60)))
+                        _selected.Clear();
                 GUILayout.FlexibleSpace();
                 using (new EditorGUI.DisabledScope(_busy || !_fetched || changed.Count == 0))
                     if (GUILayout.Button($"Publish tất cả module đã đổi ({changed.Count})", EditorStyles.toolbarButton, GUILayout.Width(230)))
@@ -312,7 +329,7 @@ namespace ModuleManager
             Rescan();
             var ids = new HashSet<string>(modules.Select(m => m.Id));
             var order = ModulePublisher.TopoOrder(_locals.Where(m => m.IsValid && ids.Contains(m.Id)));
-            var plan = string.Join("\n", order.Select(m =>
+            var plan = ModuleManagerWindow.Lines(order.Select(m =>
                 $"• {m.Manifest.Title} {ModulePublisher.NextVersion(m.Version, _published.TryGetValue(m.Id, out var p) ? p.version : null, Kind(m))}"));
             if (!EditorUtility.DisplayDialog("Publish", $"Publish lên {Source.name}:\n{plan}", "Publish", "Huỷ")) return;
 

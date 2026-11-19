@@ -118,6 +118,9 @@ Xoá một release trên GitHub là version đó biến mất khỏi Manager.
 2. Chọn version ở từng dòng → **Cài / Cập nhật / Hạ cấp / Cài lại**. Module phụ thuộc được cài kèm.
    **Cập nhật tất cả** nâng mọi module đang có lên bản mới nhất.
 3. **Gỡ** bị chặn nếu module khác còn cần nó.
+4. Làm nhiều mục một lần: tick ô ở đầu dòng, hoặc ô của thư mục để chọn cả nhóm (ô "–" = nhóm đang chọn một phần),
+   rồi bấm **Cài / Cập nhật đã chọn** (lấy version đang chọn ở từng dòng) hoặc **Gỡ đã chọn**. Cả nhóm dùng một hộp
+   xác nhận, một lần Refresh, một lần thêm/gỡ package.
 
 Cập nhật sẽ **xoá thư mục cũ của module rồi chép bản mới**. Không sửa tay file của module trong game project.
 Muốn sửa thì sửa ở project nguồn rồi publish.
@@ -133,7 +136,8 @@ Project nguồn là project chứa code gốc của các module.
 2. `Tools/Module Manager/Publisher` → nhập token có quyền ghi → **Fetch**.
 3. Cột trạng thái so `contentHash`: **Chưa publish** / **Khớp** / **Đã đổi**.
 4. Chọn mức tăng (Patch/Minor/Major), ghi changelog, bấm **Publish** từng module, hoặc **Publish tất cả module đã đổi**
-   (tự xếp module phụ thuộc lên trước).
+   (tự xếp module phụ thuộc lên trước). Tick ô ở dòng/thư mục để chọn nhiều mục: **Áp mức tăng** đặt cùng một mức
+   cho mọi mục đã chọn, **Publish đã chọn** publish lần lượt các mục đó.
 5. Version mới được ghi vào manifest nguồn. Commit + push như bình thường.
 
 Publisher chặn khi: manifest hỏng, trùng id, phụ thuộc không có hoặc vòng, path của hai module chồng nhau,

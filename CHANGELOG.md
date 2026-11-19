@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.4.0
+
+- Chọn nhiều mục: ô chọn ở từng dòng và ở từng thư mục (chọn / bỏ chọn cả nhóm) trong Manager và Publisher.
+- Manager: **Cài / Cập nhật đã chọn**, **Gỡ đã chọn**, **Bỏ chọn**. Cả nhóm dùng một hộp xác nhận, một lần Refresh, một lần thêm/gỡ package; package chỉ bị gỡ khi không module nào ngoài nhóm còn khai.
+- Publisher: **Áp mức tăng** cho mọi mục đã chọn, **Publish đã chọn**.
+- Hộp thoại xác nhận rút gọn khi danh sách dài.
+
 ## 1.3.0
 
 - Plugin UPM: manifest `paths` rỗng chỉ có `packages`. Cài = thêm package, gỡ = gỡ package không module nào khác còn khai.

@@ -129,6 +129,38 @@ namespace ModuleManager.Tests
         }
 
         [Test]
+        public void BatchRemovalChecksPackagesAndDependenciesAsAGroup()
+        {
+            InstalledModule Mod(string id, string pkg, params (string, string)[] deps)
+            {
+                var m = Installed(id, "1.0.0", deps);
+                m.Manifest.packages = pkg == null ? new PackageDependency[0] : new[] { new PackageDependency { name = pkg } };
+                return m;
+            }
+            var a = Mod("a", "com.x");
+            var b = Mod("b", "com.x", ("a", "1.0.0"));
+            var c = Mod("c", "com.y");
+            var all = new[] { a, b, c };
+
+            CollectionAssert.IsEmpty(ModuleInstaller.PackagesToRemove(all, new[] { a }), "b còn khai com.x");
+            CollectionAssert.AreEqual(new[] { "com.x" }, ModuleInstaller.PackagesToRemove(all, new[] { a, b }));
+            CollectionAssert.AreEqual(new[] { "com.y" }, ModuleInstaller.PackagesToRemove(all, new[] { a, c }));
+
+            CollectionAssert.IsNotEmpty(ModuleResolver.RemovalErrors(all, "a"), "b cần a");
+            CollectionAssert.IsEmpty(ModuleResolver.RemovalErrors(all, new[] { "a", "b" }), "gỡ cả a và b cùng lúc thì không lỗi");
+        }
+
+        [Test]
+        public void InstallSeveralModulesInOnePlan()
+        {
+            PublishAll();
+            Install("t.a", "t.b");
+            CollectionAssert.AreEquivalent(new[] { "t.a", "t.b" }, ModuleFiles.Scan(_dst).Select(m => m.Id));
+            Assert.AreEqual("v1", Read(_dst, "Assets/Fw/A/a1.cs"));
+            Assert.IsTrue(Exists(_dst, "Assets/Fw/B/b.cs"));
+        }
+
+        [Test]
         public void ParseChecksPluginFields()
         {
             string J(string extra) => "{\"id\":\"p\",\"version\":\"1.0.0\"" + extra + "}";

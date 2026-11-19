@@ -66,12 +66,16 @@ namespace ModuleManager
             return imports;
         }
 
-        /// <summary>Package UPM của module sắp gỡ mà không module đang cài nào khác còn khai.</summary>
-        public static List<string> PackagesToRemove(IEnumerable<InstalledModule> installed, InstalledModule removing)
+        public static List<string> PackagesToRemove(IEnumerable<InstalledModule> installed, InstalledModule removing) =>
+            PackagesToRemove(installed, new[] { removing });
+
+        /// <summary>Package UPM của các module sắp gỡ mà không module nào còn lại (ngoài nhóm đang gỡ) khai.</summary>
+        public static List<string> PackagesToRemove(IEnumerable<InstalledModule> installed, ICollection<InstalledModule> removing)
         {
-            var kept = new HashSet<string>(installed.Where(m => m.IsValid && m.Id != removing.Id)
+            var ids = new HashSet<string>(removing.Select(m => m.Id));
+            var kept = new HashSet<string>(installed.Where(m => m.IsValid && !ids.Contains(m.Id))
                 .SelectMany(m => m.Manifest.packages).Select(p => p.name));
-            return removing.Manifest.packages.Select(p => p.name).Where(n => !kept.Contains(n)).Distinct().ToList();
+            return removing.SelectMany(m => m.Manifest.packages).Select(p => p.name).Where(n => !kept.Contains(n)).Distinct().ToList();
         }
 
         /// <summary>Package UPM mà các module cần nhưng Packages/manifest.json chưa có.</summary>

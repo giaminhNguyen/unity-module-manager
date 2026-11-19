@@ -81,10 +81,14 @@ namespace ModuleManager
         }
 
         /// <summary>Lỗi phát sinh nếu gỡ module <paramref name="id"/> (module khác đang cần nó).</summary>
-        public static List<string> RemovalErrors(IEnumerable<InstalledModule> installed, string id)
+        public static List<string> RemovalErrors(IEnumerable<InstalledModule> installed, string id) =>
+            RemovalErrors(installed, new[] { id });
+
+        /// <summary>Lỗi phụ thuộc mới phát sinh nếu gỡ cùng lúc các module <paramref name="ids"/>.</summary>
+        public static List<string> RemovalErrors(IEnumerable<InstalledModule> installed, ICollection<string> ids)
         {
             var inst = ValidById(installed);
-            return NewErrors(inst.Values.Select(m => m.Manifest), inst.Values.Where(m => m.Id != id).Select(m => m.Manifest));
+            return NewErrors(inst.Values.Select(m => m.Manifest), inst.Values.Where(m => !ids.Contains(m.Id)).Select(m => m.Manifest));
         }
 
         /// <summary>Mọi phụ thuộc chưa thoả trong một tập module.</summary>

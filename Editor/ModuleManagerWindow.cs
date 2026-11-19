@@ -26,6 +26,7 @@ namespace ModuleManager
         private List<InstalledModule> _installed = new List<InstalledModule>();
         private readonly Dictionary<string, int> _picked = new Dictionary<string, int>();
         private readonly HashSet<string> _collapsed = new HashSet<string>();
+        private readonly HashSet<string> _selected = new HashSet<string>();
         private string _expanded;
         private string _search = "";
         private string _status = "Bấm Fetch để tải danh sách module từ nguồn.";
@@ -77,7 +78,7 @@ namespace ModuleManager
                             r.manifest.Title.IndexOf(_search, StringComparison.OrdinalIgnoreCase) >= 0 ||
                             r.id.IndexOf(_search, StringComparison.OrdinalIgnoreCase) >= 0);
 
-            DrawCategoryTree(rows.ToList(), r => r.manifest, r => DrawRow(r.id), _collapsed);
+            DrawCategoryTree(rows.ToList(), r => r.manifest, r => DrawRow(r.id), _collapsed, _selected);
             EditorGUILayout.EndScrollView();
 
             DrawFooter();
@@ -85,20 +86,22 @@ namespace ModuleManager
 
         /// <summary>
         /// Vẽ danh sách thành cây foldout theo category dạng "A/B/C" (dữ liệu từ manifest, tool không biết trước nhóm nào).
-        /// Trạng thái gập lưu theo đường dẫn đầy đủ của nhóm.
+        /// Trạng thái gập lưu theo đường dẫn đầy đủ của nhóm. Có <paramref name="selected"/> thì mỗi dòng và mỗi thư mục
+        /// có ô chọn (theo id module); ô thư mục chọn / bỏ chọn cả nhóm.
         /// </summary>
         internal static void DrawCategoryTree<T>(IList<T> items, Func<T, ModuleManifest> manifest, Action<T> drawRow,
-            HashSet<string> collapsed) =>
-            DrawCategoryLevel(items.Select(i => (path: manifest(i).CategoryPath, title: manifest(i).Title, item: i)).ToList(),
-                0, "", drawRow, collapsed);
+            HashSet<string> collapsed, HashSet<string> selected = null) =>
+            DrawCategoryLevel(items.Select(i => (path: manifest(i).CategoryPath, title: manifest(i).Title, id: manifest(i).id, item: i)).ToList(),
+                0, "", drawRow, collapsed, selected);
 
-        private static void DrawCategoryLevel<T>(List<(string[] path, string title, T item)> items, int depth, string prefix,
-            Action<T> drawRow, HashSet<string> collapsed)
+        private static void DrawCategoryLevel<T>(List<(string[] path, string title, string id, T item)> items, int depth, string prefix,
+            Action<T> drawRow, HashSet<string> collapsed, HashSet<string> selected)
         {
             foreach (var r in items.Where(x => x.path.Length == depth).OrderBy(x => x.title, StringComparer.OrdinalIgnoreCase))
                 using (new EditorGUILayout.HorizontalScope())
                 {
                     GUILayout.Space(depth * 14);
+                    if (selected != null) Check(selected, new[] { r.id });
                     using (new EditorGUILayout.VerticalScope()) drawRow(r.item);
                 }
 
@@ -110,6 +113,7 @@ namespace ModuleManager
                 using (new EditorGUILayout.HorizontalScope())
                 {
                     GUILayout.Space(depth * 14);
+                    if (selected != null) Check(selected, g.Select(x => x.id).ToList());
                     now = EditorGUILayout.Foldout(open, $"{g.Key} ({g.Count()})", true,
                         depth == 0 ? EditorStyles.foldoutHeader : EditorStyles.foldout);
                 }
@@ -119,9 +123,30 @@ namespace ModuleManager
                     else collapsed.Add(key);
                 }
                 if (!now) continue;
-                DrawCategoryLevel(g.ToList(), depth + 1, key + "/", drawRow, collapsed);
+                DrawCategoryLevel(g.ToList(), depth + 1, key + "/", drawRow, collapsed, selected);
                 if (depth == 0) EditorGUILayout.Space(4);
             }
+        }
+
+        /// <summary>Ô chọn cho một nhóm id: tick = chọn hết, bỏ tick = bỏ hết, chọn một phần thì hiện dấu "–".</summary>
+        private static void Check(HashSet<string> selected, ICollection<string> ids)
+        {
+            var all = ids.All(selected.Contains);
+            EditorGUI.showMixedValue = !all && ids.Any(selected.Contains);
+            var now = EditorGUILayout.Toggle(all, GUILayout.Width(16));
+            EditorGUI.showMixedValue = false;
+            if (now == all) return;
+            if (now) selected.UnionWith(ids);
+            else selected.ExceptWith(ids);
+        }
+
+        /// <summary>Gộp danh sách dài cho hộp thoại: quá <paramref name="max"/> dòng thì rút gọn.</summary>
+        internal static string Lines(IEnumerable<string> lines, int max = 25)
+        {
+            var list = lines.ToList();
+            return list.Count <= max
+                ? string.Join("\n", list)
+                : string.Join("\n", list.Take(max)) + $"\n… và {list.Count - max} mục khác";
         }
 
         private void DrawToolbar()
@@ -221,7 +246,7 @@ namespace ModuleManager
                     }
                 using (new EditorGUI.DisabledScope(locked || inst == null))
                     if (GUILayout.Button("Gỡ", GUILayout.Width(40)))
-                        EditorApplication.delayCall += () => Remove(inst);
+                        EditorApplication.delayCall += () => Remove(new[] { inst });
             }
 
             if (_expanded == id) DrawDetails(manifest, pick, inst);
@@ -251,11 +276,30 @@ namespace ModuleManager
         private void DrawFooter()
         {
             var updates = Updatable();
+            // Bản cài lấy theo version đang chọn ở từng dòng; mục không có trên nguồn thì bỏ qua.
+            var toInstall = _selected.Select(Picked).Where(r => r != null).ToList();
+            var toRemove = _selected.Select(Installed).Where(m => m != null).ToList();
+            var locked = _busy || _settings.devMode;
             using (new EditorGUILayout.HorizontalScope(EditorStyles.toolbar))
             {
-                GUILayout.Label($"Đã cài {_installed.Count(m => m.IsValid)} module", EditorStyles.miniLabel);
+                GUILayout.Label($"Đã cài {_installed.Count(m => m.IsValid)} module · Đã chọn {_selected.Count}", EditorStyles.miniLabel);
                 GUILayout.FlexibleSpace();
-                using (new EditorGUI.DisabledScope(_busy || _settings.devMode || updates.Count == 0))
+                using (new EditorGUI.DisabledScope(locked || toInstall.Count == 0))
+                    if (GUILayout.Button($"Cài / Cập nhật đã chọn ({toInstall.Count})", EditorStyles.toolbarButton, GUILayout.Width(190)))
+                        Run(async () =>
+                        {
+                            if (await InstallAsync(toInstall)) _selected.Clear();
+                        });
+                using (new EditorGUI.DisabledScope(locked || toRemove.Count == 0))
+                    if (GUILayout.Button($"Gỡ đã chọn ({toRemove.Count})", EditorStyles.toolbarButton, GUILayout.Width(110)))
+                        EditorApplication.delayCall += () =>
+                        {
+                            if (Remove(toRemove)) _selected.Clear();
+                        };
+                using (new EditorGUI.DisabledScope(_selected.Count == 0))
+                    if (GUILayout.Button("Bỏ chọn", EditorStyles.toolbarButton, GUILayout.Width(60)))
+                        _selected.Clear();
+                using (new EditorGUI.DisabledScope(locked || updates.Count == 0))
                     if (GUILayout.Button($"Cập nhật tất cả ({updates.Count})", EditorStyles.toolbarButton, GUILayout.Width(150)))
                         Run(() => InstallAsync(updates));
             }
@@ -271,6 +315,14 @@ namespace ModuleManager
         // ───────────────────────── Hành động ─────────────────────────
 
         private ModuleRelease Latest(string id) => _byId.TryGetValue(id, out var v) ? v[0] : null;
+
+        /// <summary>Bản đang chọn ở ô version của dòng (mặc định bản mới nhất), null nếu nguồn không có module này.</summary>
+        private ModuleRelease Picked(string id)
+        {
+            if (!_byId.TryGetValue(id, out var v)) return null;
+            _picked.TryGetValue(id, out var idx);
+            return v[Mathf.Clamp(idx, 0, v.Count - 1)];
+        }
 
         private List<ModuleRelease> Updatable() =>
             _installed.Where(m => m.IsValid)
@@ -290,7 +342,8 @@ namespace ModuleManager
             _status = $"{Source.name}: {_byId.Count} module, {_releases.Count} bản phát hành — {DateTime.Now:HH:mm}";
         }
 
-        private async Task InstallAsync(IReadOnlyList<ModuleRelease> requested)
+        /// <returns>true nếu đã cài xong (không lỗi, không huỷ).</returns>
+        private async Task<bool> InstallAsync(IReadOnlyList<ModuleRelease> requested)
         {
             Rescan();
             var errors = new List<string>();
@@ -298,22 +351,22 @@ namespace ModuleManager
             if (errors.Count > 0)
             {
                 EditorUtility.DisplayDialog("Không cài được", string.Join("\n", errors.Distinct()), "OK");
-                return;
+                return false;
             }
             if (plan.Count == 0)
             {
                 _status = "Đã đúng version, không có gì để làm.";
-                return;
+                return true;
             }
 
             var missing = ModuleInstaller.MissingPackages(ProjectRoot, plan.Select(s => s.Target.Manifest));
-            var message = string.Join("\n", plan.Select(s => "• " + s.Describe()));
+            var message = Lines(plan.Select(s => "• " + s.Describe()));
             if (!string.IsNullOrWhiteSpace(Source.installRoot)) message += "\n\nCài vào: " + Source.installRoot.Trim();
             if (plan.Any(s => s.Installed != null)) message += "\n\nThư mục cũ của module được cập nhật sẽ bị xoá rồi chép bản mới.";
             if (missing.Count > 0) message += "\n\nThêm package: " + string.Join(", ", missing.Select(p => p.name));
             var unityPackages = plan.Select(s => s.Target.Manifest.unityPackage).Where(u => !string.IsNullOrEmpty(u)).ToList();
             if (unityPackages.Count > 0) message += "\n\nImport: " + string.Join(", ", unityPackages);
-            if (!EditorUtility.DisplayDialog("Module Manager", message, "Thực hiện", "Huỷ")) return;
+            if (!EditorUtility.DisplayDialog("Module Manager", message, "Thực hiện", "Huỷ")) return false;
 
             var source = SourceFactory.Create(Source, ProjectRoot);
             var zips = await ModuleInstaller.DownloadAsync(source, plan, DownloadDir,
@@ -325,26 +378,32 @@ namespace ModuleManager
             foreach (var p in imports) AssetDatabase.ImportPackage(p, false);
             if (missing.Count > 0) AddPackages(missing);
             _status = "Xong: " + string.Join(", ", plan.Select(s => $"{s.Target.Manifest.Title} {s.Target.Version}"));
+            return true;
         }
 
-        private void Remove(InstalledModule m)
+        /// <summary>Gỡ một hoặc nhiều module: một hộp xác nhận, xoá hết, Refresh một lần, gỡ package một lần.</summary>
+        /// <returns>true nếu đã gỡ.</returns>
+        private bool Remove(IReadOnlyList<InstalledModule> modules)
         {
-            var errors = ModuleResolver.RemovalErrors(_installed, m.Id);
+            var ids = new HashSet<string>(modules.Select(m => m.Id));
+            var errors = ModuleResolver.RemovalErrors(_installed, ids);
             if (errors.Count > 0)
             {
                 EditorUtility.DisplayDialog("Không gỡ được", string.Join("\n", errors), "OK");
-                return;
+                return false;
             }
-            var packages = ModuleInstaller.PackagesToRemove(_installed, m);
-            var message = $"Gỡ {m.Manifest.Title} {m.Version}? Sẽ xoá:\n" +
-                          string.Join("\n", m.Paths.Concat(m.Manifest.importedPaths).Append(m.ManifestPath));
+            var packages = ModuleInstaller.PackagesToRemove(_installed, modules.ToList());
+            var what = modules.Count == 1 ? $"{modules[0].Manifest.Title} {modules[0].Version}" : $"{modules.Count} module";
+            var message = $"Gỡ {what}? Sẽ xoá:\n" +
+                          Lines(modules.SelectMany(m => m.Paths.Concat(m.Manifest.importedPaths).Append(m.ManifestPath)));
             if (packages.Count > 0) message += "\n\nGỡ package: " + string.Join(", ", packages);
-            if (!EditorUtility.DisplayDialog("Gỡ module", message, "Gỡ", "Huỷ")) return;
-            ModuleFiles.Delete(ProjectRoot, m);
+            if (!EditorUtility.DisplayDialog("Gỡ module", message, "Gỡ", "Huỷ")) return false;
+            foreach (var m in modules) ModuleFiles.Delete(ProjectRoot, m);
             AssetDatabase.Refresh();
             if (packages.Count > 0) RemovePackages(packages);
             Rescan();
-            _status = $"Đã gỡ {m.Manifest.Title}.";
+            _status = "Đã gỡ " + string.Join(", ", modules.Select(m => m.Manifest.Title)) + ".";
+            return true;
         }
 
         private static void AddPackages(List<PackageDependency> packages) =>
