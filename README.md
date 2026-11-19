@@ -3,7 +3,7 @@
 Tool Editor cài / cập nhật / gỡ / phát hành từng phần của một framework Unity theo version, giống Package Manager thu nhỏ.
 Danh sách module và nơi phát hành đều là dữ liệu, tool không gắn cứng vào framework nào.
 
-Một cửa sổ `Tools/Module Manager` với 2 tab (menu `Manager` / `Publisher` mở thẳng tab tương ứng):
+Mở bằng `Window/Module Manager`: một cửa sổ có 2 tab.
 
 - **Manager**: cài / cập nhật / gỡ. Dùng ở mọi game project.
 - **Publisher**: phát hành. Chỉ dùng ở project nguồn (Dev mode).
@@ -116,7 +116,7 @@ Xoá một release trên GitHub là version đó biến mất khỏi Manager.
 
 ## Dùng ở game project
 
-1. `Tools/Module Manager/Manager` (tab Manager) → Cấu hình → thêm nguồn → nhập token (repo private) → **Fetch**.
+1. `Window/Module Manager`, tab **Manager** → Cấu hình → thêm nguồn → nhập token (repo private) → **Fetch**.
 2. Chọn version ở từng dòng → **Cài / Cập nhật / Hạ cấp / Cài lại**. Module phụ thuộc được cài kèm.
    **Cập nhật tất cả** nâng mọi module đang có lên bản mới nhất.
 3. **Gỡ** bị chặn nếu module khác còn cần nó.
@@ -135,7 +135,7 @@ mới xoá/chép → `AssetDatabase.Refresh` một lần. Gói nào lỗi thì d
 Project nguồn là project chứa code gốc của các module.
 
 1. Module Manager → **Cấu hình** → bật **Dev mode**. Manager khoá Cài/Gỡ ở project này để không ghi đè source.
-2. Tab **Publisher** (`Tools/Module Manager/Publisher`) → nhập token có quyền ghi → **Fetch**.
+2. `Window/Module Manager`, tab **Publisher** → nhập token có quyền ghi → **Fetch**.
 3. Cột trạng thái so `contentHash`: **Chưa publish** / **Khớp** / **Đã đổi**.
 4. Chọn mức tăng (Patch/Minor/Major), ghi changelog, bấm **Publish** từng module, hoặc **Publish tất cả module đã đổi**
    (tự xếp module phụ thuộc lên trước). Tick ô ở dòng/thư mục để chọn nhiều mục: **Áp mức tăng** đặt cùng một mức

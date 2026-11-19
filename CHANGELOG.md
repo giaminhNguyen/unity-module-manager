@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.6.0
+
+- Menu gộp còn một mục `Window/Module Manager` (bỏ `Tools/Module Manager/Manager` và `/Publisher`). Cửa sổ nhớ tab đang mở.
+
 ## 1.5.0
 
 - Gộp Manager và Publisher thành một cửa sổ có 2 tab, dùng chung cấu hình. Menu `Manager` / `Publisher` mở thẳng tab tương ứng.

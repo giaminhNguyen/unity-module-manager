@@ -38,17 +38,11 @@ namespace ModuleManager
         [SerializeField] private int _tab;
         private PublisherTab _publisher;
 
-        [MenuItem("Tools/Module Manager/Manager", priority = 0)]
-        public static void Open() => Open(0);
-
-        [MenuItem("Tools/Module Manager/Publisher", priority = 1)]
-        public static void OpenPublisher() => Open(1);
-
-        private static void Open(int tab)
+        [MenuItem("Window/Module Manager")]
+        public static void Open()
         {
             var w = GetWindow<ModuleManagerWindow>("Module Manager");
             w.minSize = new Vector2(760, 420);
-            w._tab = tab;
         }
 
         internal static ManagerSettings LoadSettings() => ManagerSettings.Load(ProjectRoot);
