@@ -90,6 +90,10 @@ Manager nhận ra loại từ dữ liệu manifest, không cần khai loại:
 Khai ở Manager → **Cấu hình** → **Thêm nguồn**, lưu trong `ProjectSettings/ModuleManagerSettings.json`.
 Chưa có nguồn nào thì Manager hiện hướng dẫn thêm.
 
+**Preset nguồn**: dưới nút Thêm nguồn có nút `+ <tên>` cho từng nguồn dựng sẵn chưa có trong project
+(hiện có `InWorking` = `giaminhNguyen/InWorking`). Thêm preset mới = thêm một dòng vào `SourceConfig.Presets`
+trong `Editor/ModuleSources.cs`.
+
 | Kiểu | `location` |
 |---|---|
 | `GitHub` | `owner/repo` |

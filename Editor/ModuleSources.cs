@@ -52,6 +52,17 @@ namespace ModuleManager
 
         [Tooltip("Thư mục cài trong project này (vd Assets/Working). Thay thư mục cấp đầu dưới Assets/ của gói. Trống = cài đúng đường dẫn như ở project nguồn.")]
         public string installRoot;
+
+        /// <summary>Nguồn dựng sẵn để thêm bằng một nút trong Cấu hình. Thêm preset = thêm một dòng.</summary>
+        public static readonly SourceConfig[] Presets =
+        {
+            new SourceConfig { name = "InWorking", type = GitHub, location = "giaminhNguyen/InWorking" },
+        };
+
+        public SourceConfig Clone() => (SourceConfig)MemberwiseClone();
+
+        public bool SameAs(SourceConfig o) =>
+            o != null && type == o.type && string.Equals(location?.Trim(), o.location?.Trim(), StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>Cấu hình theo project, lưu ở ProjectSettings/ModuleManagerSettings.json (commit cùng project).</summary>

@@ -302,6 +302,17 @@ namespace ModuleManager
                 if (GUILayout.Button("Thêm nguồn", GUILayout.Width(110)))
                     _settings.sources.Add(new SourceConfig { name = "Nguồn mới", type = SourceConfig.GitHub, location = "owner/repo" });
 
+                var presets = SourceConfig.Presets.Where(p => !_settings.sources.Any(p.SameAs)).ToArray();
+                if (presets.Length > 0)
+                    using (new EditorGUILayout.HorizontalScope())
+                    {
+                        GUILayout.Label("Preset nguồn", GUILayout.Width(90));
+                        foreach (var p in presets)
+                            if (GUILayout.Button(new GUIContent("+ " + p.name, p.type + ": " + p.location), GUILayout.ExpandWidth(false)))
+                                _settings.sources.Add(p.Clone());
+                        GUILayout.FlexibleSpace();
+                    }
+
                 _settings.devMode = EditorGUILayout.ToggleLeft(new GUIContent("Dev mode (project nguồn)",
                     "Bật ở project chứa code gốc của module: khoá Cài/Gỡ để không ghi đè source, mở Publisher."), _settings.devMode);
                 if (EditorGUI.EndChangeCheck()) _settings.Save(ProjectRoot);
