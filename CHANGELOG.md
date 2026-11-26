@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.8.0
+
+- Cấu hình có hàng **Preset nguồn**: nút `+ <tên>` thêm nhanh nguồn dựng sẵn (hiện có `InWorking` = `giaminhNguyen/InWorking`). Preset đã có trong project thì ẩn. Danh sách preset ở `SourceConfig.Presets`.
+
 ## 1.7.0
 
 - Lưu cache kết quả Fetch ở `Library/ModuleManager/Cache` (mỗi nguồn một file). Mở lại cửa sổ hoặc domain reload sau khi cài module thì danh sách vẫn còn, ghi rõ thời điểm dữ liệu. Publisher dùng chung cache và tự Fetch lại sau khi publish.
