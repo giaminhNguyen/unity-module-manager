@@ -141,13 +141,7 @@ namespace ModuleManager
                 GUILayout.FlexibleSpace();
             }
 
-            if (Source?.type == SourceConfig.GitHub)
-            {
-                EditorGUI.BeginChangeCheck();
-                var token = EditorGUILayout.PasswordField(new GUIContent("Token GitHub",
-                    "Token cần quyền Contents: Read and write trên repo để tạo release."), Tokens.Get(Source));
-                if (EditorGUI.EndChangeCheck()) Tokens.Set(Source, token);
-            }
+            TokenField.Draw(Source, "Token cần quyền Contents: Read and write trên repo để tạo release. Lưu theo máy (EditorPrefs), không vào git.");
 
             DrawDevSettings();
 

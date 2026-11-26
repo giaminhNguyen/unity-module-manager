@@ -1,6 +1,6 @@
 {
     "name": "com.modulemanager.editor",
-    "version": "1.8.0",
+    "version": "1.9.0",
     "displayName": "Module Manager",
     "unity": "2021.3",
     "description": "Tool Editor cài, cập nhật, gỡ và phát hành các module trong project Unity theo version (nguồn GitHub release hoặc thư mục), giống Package Manager thu nhỏ."

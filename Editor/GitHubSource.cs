@@ -210,6 +210,24 @@ namespace ModuleManager
                 await Send(r);
         }
 
+        /// <summary>Thử token với repo (1 request). null = đọc được repo, ngược lại là lý do lỗi.</summary>
+        public async Task<string> CheckAccessAsync()
+        {
+            using (var r = Request("GET", Api + _repo, "application/vnd.github+json", 30))
+            {
+                await Send(r);
+                if (Ok(r)) return null;
+                switch (r.responseCode)
+                {
+                    case 401: return "Token sai hoặc đã hết hạn";
+                    case 404: return $"Token không thấy repo {_repo} (sai repo hoặc token chưa được cấp quyền đọc)";
+                    case 403: return "GitHub từ chối (hết lượt gọi API hoặc token thiếu quyền)";
+                    case 0: return "Không kết nối được GitHub: " + r.error;
+                    default: return $"HTTP {r.responseCode} {r.error}";
+                }
+            }
+        }
+
         // ───────────────────────── HTTP ─────────────────────────
 
         private UnityWebRequest Request(string method, string url, string accept, int timeout, bool auth = true)

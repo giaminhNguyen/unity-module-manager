@@ -266,13 +266,7 @@ namespace ModuleManager
                     EditorStyles.toolbarButton, GUILayout.Width(86));
             }
 
-            if (Source?.type == SourceConfig.GitHub)
-            {
-                EditorGUI.BeginChangeCheck();
-                var token = EditorGUILayout.PasswordField(new GUIContent("Token GitHub",
-                    "Fine-grained token của repo. Repo public có thể để trống. Lưu theo máy (EditorPrefs), không vào git."), Tokens.Get(Source));
-                if (EditorGUI.EndChangeCheck()) Tokens.Set(Source, token);
-            }
+            TokenField.Draw(Source, "Fine-grained token của repo. Repo public có thể để trống. Lưu theo máy (EditorPrefs), không vào git.");
         }
 
         private void DrawSettings()

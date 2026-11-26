@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.9.0
+
+- Bảo vệ token GitHub: bỏ ô nhập token sửa tại chỗ ở cả hai tab, thay bằng dòng trạng thái (`Chưa có token` / `Đã lưu ••••abcd` + kết quả kiểm tra) và các nút **Kiểm tra**, **Cập nhật token**, **Xoá**. Cập nhật token mở hộp thoại riêng, chỉ thay token cũ khi token mới đọc được repo.
+
 ## 1.8.0
 
 - Cấu hình có hàng **Preset nguồn**: nút `+ <tên>` thêm nhanh nguồn dựng sẵn (hiện có `InWorking` = `giaminhNguyen/InWorking`). Preset đã có trong project thì ẩn. Danh sách preset ở `SourceConfig.Presets`.

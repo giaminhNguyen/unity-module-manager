@@ -120,7 +120,7 @@ Xoá một release trên GitHub là version đó biến mất khỏi Manager.
 
 ## Dùng ở game project
 
-1. `Window/Module Manager`, tab **Manager** → Cấu hình → thêm nguồn → nhập token (repo private) → **Fetch**.
+1. `Window/Module Manager`, tab **Manager** → Cấu hình → thêm nguồn → **Nhập token** (repo private) → **Fetch**.
 2. Chọn version ở từng dòng → **Cài / Cập nhật / Hạ cấp / Cài lại**. Module phụ thuộc được cài kèm.
    **Cập nhật tất cả** nâng mọi module đang có lên bản mới nhất.
 3. **Gỡ** bị chặn nếu module khác còn cần nó.
@@ -139,7 +139,7 @@ mới xoá/chép → `AssetDatabase.Refresh` một lần. Gói nào lỗi thì d
 Project nguồn là project chứa code gốc của các module.
 
 1. Module Manager → **Cấu hình** → bật **Dev mode**. Manager khoá Cài/Gỡ ở project này để không ghi đè source.
-2. `Window/Module Manager`, tab **Publisher** → nhập token có quyền ghi → **Fetch**.
+2. `Window/Module Manager`, tab **Publisher** → **Nhập token** có quyền ghi → **Fetch**.
 3. Cột trạng thái so `contentHash`: **Chưa publish** / **Khớp** / **Đã đổi**.
 4. Chọn mức tăng (Patch/Minor/Major), ghi changelog, bấm **Publish** từng module, hoặc **Publish tất cả module đã đổi**
    (tự xếp module phụ thuộc lên trước). Tick ô ở dòng/thư mục để chọn nhiều mục: **Áp mức tăng** đặt cùng một mức
@@ -184,6 +184,13 @@ Fine-grained token, chỉ chọn repo chứa bản phát hành:
 
 Token lưu theo máy trong EditorPrefs (`ModuleManager.Token.<owner/repo>`), không nằm trong project.
 Repo public thì Manager không cần token.
+
+Cửa sổ không hiện và không cho sửa token tại chỗ, chỉ có dòng trạng thái (`Chưa có token` / `Đã lưu ••••abcd`) và 3 nút:
+
+- **Nhập token / Cập nhật token**: mở hộp thoại nhập token mới. Bấm **Kiểm tra & lưu** thì gọi GitHub thử; token mới đọc
+  được repo mới thay hẳn token cũ. Lỗi, Huỷ hay đóng hộp thoại thì token cũ giữ nguyên.
+- **Kiểm tra**: gọi GitHub 1 lần xem token đã lưu còn đọc được repo không. Không kiểm quyền ghi: quyền Publish chỉ lộ ra khi publish.
+- **Xoá**: xoá token đã lưu trên máy (có hỏi xác nhận).
 
 ## File tool đụng tới
 
