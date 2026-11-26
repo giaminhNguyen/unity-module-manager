@@ -55,6 +55,10 @@ Ghim version bằng tag: `https://github.com/giaminhNguyen/unity-module-manager.
 - `dependencies.version` là version **tối thiểu**. Manager tự cài kèm hoặc nâng module phụ thuộc.
 - `packages`: package UPM cần có. Thiếu thì Manager thêm vào `Packages/manifest.json` sau khi cài; gỡ module thì gỡ
   các package mà không module đang cài nào khác còn khai.
+  - `source`: git URL (hoặc `file:`), một version (vd `1.5.3`, thành `name@1.5.3`), hoặc trống (thêm theo tên).
+  - `registry` + `scopes` (tuỳ chọn): package nằm ở scoped registry (npm, OpenUPM...). Manager thêm registry vào
+    `scopedRegistries` của `Packages/manifest.json` trước khi thêm package; đã có cùng URL thì chỉ bổ sung scope, scope đã
+    thuộc registry khác thì để nguyên. Chỉ nhận `https`, tên package phải thuộc một scope. Gỡ module không gỡ registry.
 - `unityPackage`, `importedPaths`: xem phần Plugin bên dưới.
 - `version`, `contentHash` do Publisher ghi. Không sửa tay `contentHash`.
 
@@ -65,12 +69,16 @@ Manager nhận ra loại từ dữ liệu manifest, không cần khai loại:
 | Loại | Manifest | Cài | Gỡ |
 |---|---|---|---|
 | Module file | `paths` có nội dung | Chép file | Xoá file |
-| Plugin UPM | `paths` rỗng, có `packages` | Thêm package (git URL hoặc tên package) | Gỡ package |
+| Plugin UPM | `paths` rỗng, có `packages` | Thêm package (git URL, version hoặc tên; tự thêm scoped registry nếu khai) | Gỡ package |
 | Plugin .unitypackage | Có `unityPackage` | Unity tự import gói, không hỏi | Xoá các path trong `importedPaths` |
 
 ```json
 { "id": "plugin.unitask", "displayName": "UniTask", "category": "Plugins/UPM", "version": "1.0.0", "paths": [],
   "packages": [{ "name": "com.cysharp.unitask", "source": "https://github.com/Cysharp/UniTask.git?path=src/UniTask/Assets/Plugins/UniTask" }] }
+
+{ "id": "plugin.primetween", "displayName": "PrimeTween", "category": "Plugins/UPM", "version": "1.0.0", "paths": [],
+  "packages": [{ "name": "com.kyrylokuzyk.primetween", "source": "1.5.3",
+                 "registry": "https://registry.npmjs.org", "scopes": ["com.kyrylokuzyk"] }] }
 
 { "id": "plugin.dotween-pro", "displayName": "DOTween Pro", "category": "Plugins/Asset Store", "version": "1.0.381", "paths": [],
   "unityPackage": "DOTween Pro v.1.0.381.unitypackage", "importedPaths": ["Assets/Plugins/Demigiant"] }

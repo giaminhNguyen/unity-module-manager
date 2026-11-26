@@ -509,6 +509,8 @@ namespace ModuleManager
             if (!string.IsNullOrWhiteSpace(Source.installRoot)) message += "\n\nCài vào: " + Source.installRoot.Trim();
             if (plan.Any(s => s.Installed != null)) message += "\n\nThư mục cũ của module được cập nhật sẽ bị xoá rồi chép bản mới.";
             if (missing.Count > 0) message += "\n\nThêm package: " + string.Join(", ", missing.Select(p => p.name));
+            var registries = missing.Where(p => p.HasRegistry).Select(p => $"{p.registry} ({string.Join(", ", p.scopes)})").Distinct().ToList();
+            if (registries.Count > 0) message += "\n\nThêm scoped registry (nếu chưa có): " + string.Join(", ", registries);
             var unityPackages = plan.Select(s => s.Target.Manifest.unityPackage).Where(u => !string.IsNullOrEmpty(u)).ToList();
             if (unityPackages.Count > 0) message += "\n\nImport: " + string.Join(", ", unityPackages);
             if (!EditorUtility.DisplayDialog("Module Manager", message, "Thực hiện", "Huỷ")) return false;
@@ -551,8 +553,13 @@ namespace ModuleManager
             return true;
         }
 
-        private static void AddPackages(List<PackageDependency> packages) =>
-            ChangePackages(packages.Select(p => string.IsNullOrWhiteSpace(p.source) ? p.name : p.source).ToArray(), null);
+        private void AddPackages(List<PackageDependency> packages)
+        {
+            // Registry phải có trong manifest.json trước khi UPM tìm package theo tên.
+            foreach (var r in ScopedRegistries.EnsureFile(ProjectRoot, packages))
+                Debug.Log("[ModuleManager] Đã thêm scoped registry: " + r);
+            ChangePackages(packages.Select(p => p.Identifier).ToArray(), null);
+        }
 
         private static void RemovePackages(List<string> names) => ChangePackages(null, names.ToArray());
 

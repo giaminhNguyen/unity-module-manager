@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.10.0
+
+- Plugin UPM từ scoped registry: `packages[]` có thêm `registry` (URL https) và `scopes`. Khi cài, Manager thêm registry vào `scopedRegistries` của `Packages/manifest.json` (đã có cùng URL thì bổ sung scope, scope thuộc registry khác thì để nguyên), hộp thoại cài liệt kê registry sẽ thêm. Gỡ module không gỡ registry.
+- `source` là version (vd `1.5.3`) thì thêm dạng `name@1.5.3`.
+- Plugin UPM đã publish (có `packages`) sẽ hiện **Đã đổi** trong Publisher vì manifest có thêm 2 trường; publish lại bản patch nếu muốn hết báo.
+
 ## 1.9.0
 
 - Bảo vệ token GitHub: bỏ ô nhập token sửa tại chỗ ở cả hai tab, thay bằng dòng trạng thái (`Chưa có token` / `Đã lưu ••••abcd` + kết quả kiểm tra) và các nút **Kiểm tra**, **Cập nhật token**, **Xoá**. Cập nhật token mở hộp thoại riêng, chỉ thay token cũ khi token mới đọc được repo.

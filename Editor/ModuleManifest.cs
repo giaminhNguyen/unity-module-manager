@@ -88,8 +88,18 @@ namespace ModuleManager
                 if (string.IsNullOrWhiteSpace(d.id) || !SemVer.TryParse(d.version, out _))
                     throw new FormatException($"{m.id}: dependency '{d.id}' thiếu id hoặc version hợp lệ");
             foreach (var p in m.packages)
+            {
                 if (string.IsNullOrWhiteSpace(p.name))
                     throw new FormatException($"{m.id}: package thiếu name");
+                if (!p.HasRegistry) continue;
+                // Registry được ghi vào manifest.json của project cài: chỉ nhận https.
+                if (!Uri.TryCreate(p.registry.Trim(), UriKind.Absolute, out var u) || u.Scheme != Uri.UriSchemeHttps)
+                    throw new FormatException($"{m.id}: registry '{p.registry}' của {p.name} phải là URL https");
+                if (p.scopes.Length == 0 || p.scopes.Any(string.IsNullOrWhiteSpace))
+                    throw new FormatException($"{m.id}: package {p.name} có registry thì cần scopes không rỗng");
+                if (!p.scopes.Any(s => p.name == s.Trim() || p.name.StartsWith(s.Trim() + ".", StringComparison.Ordinal)))
+                    throw new FormatException($"{m.id}: package {p.name} không thuộc scope nào trong [{string.Join(", ", p.scopes)}]");
+            }
             return m;
         }
 
@@ -106,6 +116,11 @@ namespace ModuleManager
             paths ??= Array.Empty<string>();
             dependencies ??= Array.Empty<ModuleDependency>();
             packages ??= Array.Empty<PackageDependency>();
+            foreach (var p in packages)
+            {
+                p.registry = p.registry?.Trim() ?? "";
+                p.scopes ??= Array.Empty<string>();
+            }
             unityPackage = unityPackage?.Trim() ?? "";
             importedPaths = (importedPaths ?? Array.Empty<string>()).Select(p => ModuleFiles.Norm(p ?? "").Trim().TrimEnd('/')).ToArray();
             category = string.IsNullOrWhiteSpace(category) ? "Khác" : category;
@@ -130,8 +145,28 @@ namespace ModuleManager
         [Tooltip("Tên package UPM (vd com.cysharp.unitask). Dùng để kiểm tra đã có trong manifest.json chưa.")]
         public string name;
 
-        [Tooltip("Nguồn để thêm: git URL, hoặc để trống để thêm theo tên từ registry.")]
+        [Tooltip("Nguồn để thêm: git URL, version (vd 1.5.3, lấy từ registry), hoặc để trống để thêm theo tên.")]
         public string source;
+
+        [Tooltip("URL scoped registry chứa package (vd https://registry.npmjs.org). Trống = registry mặc định của Unity. " +
+                 "Manager tự thêm registry vào Packages/manifest.json trước khi thêm package.")]
+        public string registry;
+
+        [Tooltip("Scope của registry (vd com.kyrylokuzyk). Bắt buộc khi có registry; tên package phải thuộc một scope.")]
+        public string[] scopes;
+
+        public bool HasRegistry => !string.IsNullOrWhiteSpace(registry);
+
+        /// <summary>Chuỗi đưa cho Client.Add: git URL/đường dẫn giữ nguyên, version thành name@version, trống thành name.</summary>
+        public string Identifier
+        {
+            get
+            {
+                var s = source?.Trim();
+                if (string.IsNullOrEmpty(s)) return name;
+                return s.IndexOfAny(new[] { ':', '/', '\\' }) >= 0 ? s : name + "@" + s;
+            }
+        }
     }
 
     /// <summary>Module đang có trong project, đọc từ một file *.module.json.</summary>
